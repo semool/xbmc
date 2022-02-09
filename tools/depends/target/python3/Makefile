@@ -1,7 +1,7 @@
 include ../../Makefile.include PYTHON3-VERSION ../../download-files.include
 DEPS = ../../Makefile.include ../../download-files.include Makefile PYTHON3-VERSION ../../download-files.include \
        apple.patch crosscompile.patch android.patch \
-       modules.setup darwin_embedded.patch
+       modules.setup darwin_embedded.patch 01-GH-27394-move-crypt-h.patch
 
 ifeq ($(findstring apple-darwin, $(HOST)), apple-darwin)
   HOSTPLATFORM=_PYTHON_HOST_PLATFORM="darwin"
@@ -41,6 +41,7 @@ $(PLATFORM): $(TARBALLS_LOCATION)/$(ARCHIVE).$(HASH_TYPE) $(DEPS)
 	cd $(PLATFORM); patch -p1 -i ../crosscompile.patch
 	cd $(PLATFORM); patch -p1 -i ../android.patch
 	cd $(PLATFORM); patch -p1 -i ../apple.patch
+	cd $(PLATFORM); patch -p1 -i ../01-GH-27394-move-crypt-h.patch
 ifeq ($(OS),darwin_embedded)
 	cd $(PLATFORM); patch -p1 -i ../darwin_embedded.patch
 endif
