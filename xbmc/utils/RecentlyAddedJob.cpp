@@ -30,7 +30,7 @@
 #include "platform/darwin/tvos/TVOSTopShelf.h"
 #endif
 
-#define NUM_ITEMS 10
+#define NUM_ITEMS 20
 
 CRecentlyAddedJob::CRecentlyAddedJob(int flag)
 {
