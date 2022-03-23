@@ -34,7 +34,7 @@ using namespace jni;
 // is the max TrueHD package
 const unsigned int MAX_RAW_AUDIO_BUFFER_HD = 61440;
 const unsigned int MAX_RAW_AUDIO_BUFFER = 16384;
-const unsigned int MOVING_AVERAGE_MAX_MEMBERS = 3;
+const unsigned int MOVING_AVERAGE_MAX_MEMBERS = 5;
 const uint64_t UINT64_LOWER_BYTES = 0x00000000FFFFFFFF;
 const uint64_t UINT64_UPPER_BYTES = 0xFFFFFFFF00000000;
 
@@ -450,15 +450,15 @@ bool CAESinkAUDIOTRACK::Initialize(AEAudioFormat &format, std::string &device)
         case CAEStreamInfo::STREAM_TYPE_DTSHD_CORE:
           // max 2012 bytes
           // depending on sample rate between 156 ms and 312 ms
-          m_min_buffer_size = 16 * 2012;
+          m_min_buffer_size = 8 * 2012;
           m_format.m_frames = m_min_buffer_size;
-          rawlength_in_seconds = 16 * m_format.m_streamInfo.GetDuration() / 1000;
+          rawlength_in_seconds = 8 * m_format.m_streamInfo.GetDuration() / 1000;
           break;
         case CAEStreamInfo::STREAM_TYPE_DTS_1024:
         case CAEStreamInfo::STREAM_TYPE_DTS_2048:
-          m_min_buffer_size = 8 * 5462;
+          m_min_buffer_size = 4 * 5462;
           m_format.m_frames = m_min_buffer_size;
-          rawlength_in_seconds = 8 * m_format.m_streamInfo.GetDuration() / 1000;
+          rawlength_in_seconds = 4 * m_format.m_streamInfo.GetDuration() / 1000;
           break;
         case CAEStreamInfo::STREAM_TYPE_AC3:
            ac3FrameSize = m_format.m_streamInfo.m_ac3FrameSize;
@@ -471,9 +471,9 @@ bool CAESinkAUDIOTRACK::Initialize(AEAudioFormat &format, std::string &device)
           break;
           // EAC3 is currently not supported
         case CAEStreamInfo::STREAM_TYPE_EAC3:
-          m_min_buffer_size = 2 * 10752; // least common multiple of 1792 and 1536
+          m_min_buffer_size = 10752; // least common multiple of 1792 and 1536
           m_format.m_frames = m_min_buffer_size; // needs testing
-          rawlength_in_seconds = 8 * m_format.m_streamInfo.GetDuration() / 1000;
+          rawlength_in_seconds = 4 * m_format.m_streamInfo.GetDuration() / 1000;
           break;
         default:
           m_min_buffer_size = MAX_RAW_AUDIO_BUFFER;
@@ -485,46 +485,55 @@ bool CAESinkAUDIOTRACK::Initialize(AEAudioFormat &format, std::string &device)
       CLog::Log(LOGDEBUG, "Opening Passthrough RAW Format: %s Sink SampleRate: %u", CAEUtil::StreamTypeToStr(m_format.m_streamInfo.m_type), m_sink_sampleRate);
       m_format.m_frameSize = 1;
       m_sink_frameSize = m_format.m_frameSize;
+
+      m_audiotrackbuffer_sec = rawlength_in_seconds;
     }
     else
     {
       m_format.m_frameSize = m_format.m_channelLayout.Count() * (CAEUtil::DataFormatToBits(m_format.m_dataFormat) / 8);
       m_sink_frameSize = m_format.m_frameSize;
-      bool isHDiec = ((m_format.m_streamInfo.m_type == CAEStreamInfo::STREAM_TYPE_TRUEHD) ||
-                      (m_format.m_streamInfo.m_type == CAEStreamInfo::STREAM_TYPE_DTSHD_MA));
-      if (m_passthrough && isHDiec)
-      {
-        // Certain boxes have issues opening DTS-HD / TrueHD with this large amount of data
-        // adjust accordingly
-        m_min_buffer_size *= 2;
-        m_format.m_frames = static_cast<int>(m_min_buffer_size / m_format.m_frameSize) / 2;
-        m_audiotrackbuffer_sec =
-            static_cast<double>(m_min_buffer_size) / (m_sink_frameSize * m_sink_sampleRate);
-      }
-      else
-      {
-        // aim at 200 ms buffer and 50 ms periods but at least two periods of min_buffer
-        m_min_buffer_size *= 2;
-        m_audiotrackbuffer_sec =
+      // set a min buffer size by stream type
+      // certain boxes have issues opening DTS-HD / TrueHD with this large amount of data
+      // adjust accordingly to 2 x min_buffer
+      // default is to aim at 200 ms buffer and 50 ms periods
+      // but at least two periods of min_buffer
+      double min_buffer_sec = 0.15; //150ms
+      m_min_buffer_size *= 2;
+      m_audiotrackbuffer_sec =
             static_cast<double>(m_min_buffer_size) / (m_sink_frameSize * m_sink_sampleRate);
 
-        int c = 2;
-        while (m_audiotrackbuffer_sec < 0.15)
-        {
-          m_min_buffer_size += min_buffer;
-          c++;
-          m_audiotrackbuffer_sec =
-              static_cast<double>(m_min_buffer_size) / (m_sink_frameSize * m_sink_sampleRate);
-        }
-        m_format.m_frames = static_cast<int>(m_min_buffer_size / m_format.m_frameSize) / c;
+      // adjust the audiotrack buffer in second
+      switch (m_format.m_streamInfo.m_type)
+      {
+        case CAEStreamInfo::STREAM_TYPE_TRUEHD:
+        case CAEStreamInfo::STREAM_TYPE_DTSHD_MA:
+        case CAEStreamInfo::STREAM_TYPE_DTSHD:
+          min_buffer_sec = 0.064; //64ms
+          break;
+        case CAEStreamInfo::STREAM_TYPE_DTS_512:
+        case CAEStreamInfo::STREAM_TYPE_DTSHD_CORE:
+        case CAEStreamInfo::STREAM_TYPE_DTS_1024:
+        case CAEStreamInfo::STREAM_TYPE_DTS_2048:
+        case CAEStreamInfo::STREAM_TYPE_EAC3:
+        case CAEStreamInfo::STREAM_TYPE_AC3:
+        default:
+          min_buffer_sec = 0.150; //150ms
+          break;
       }
+
+      //adjust the min buffer size according to the minimum audiotrack buffer
+      int c = 2;
+      while (m_audiotrackbuffer_sec < min_buffer_sec)
+      {
+        m_min_buffer_size += min_buffer;
+        c++;
+        m_audiotrackbuffer_sec =
+              static_cast<double>(m_min_buffer_size) / (m_sink_frameSize * m_sink_sampleRate);
+      }
+      m_format.m_frames = static_cast<int>(m_min_buffer_size / m_format.m_frameSize) / c;
     }
 
-    if (m_passthrough && !m_info.m_wantsIECPassthrough)
-      m_audiotrackbuffer_sec = rawlength_in_seconds;
-
-
-    CLog::Log(LOGDEBUG, "Created Audiotrackbuffer with playing time of %lf ms min buffer size: %u bytes",
+    CLog::Log(LOGINFO, "Created Audiotrackbuffer with playing time of %lf ms min buffer size: %u bytes",
                          m_audiotrackbuffer_sec * 1000, m_min_buffer_size);
 
     m_jniAudioFormat = m_encoding;
@@ -649,7 +658,10 @@ void CAESinkAUDIOTRACK::GetDelay(AEDelayStatus& status)
     }
   }
   // check if last value was received less than 2 seconds ago
-  if (m_timestamp.get_framePosition() > 0 &&
+  // compute the hardware delay
+  // do not use for passthrough RAW, we have A/V sync issue and some visible video stutters
+  bool rawPt = m_passthrough && !m_info.m_wantsIECPassthrough;
+  if (!rawPt && m_timestamp.get_framePosition() > 0 &&
       (CurrentHostCounter() - m_timestamp.get_nanoTime()) < 2 * 1000 * 1000 * 1000)
   {
     if (usesAdvancedLogging)
@@ -703,12 +715,6 @@ void CAESinkAUDIOTRACK::GetDelay(AEDelayStatus& status)
 
   delay += m_hw_delay;
 
-  // stop smoothing if we have the new API available
-  // though normal RAW still is really bad delay wise
-  bool rawPt = m_passthrough && !m_info.m_wantsIECPassthrough;
-  if ((m_hw_delay != 0) && !rawPt)
-    m_linearmovingaverage.clear();
-
   if (usesAdvancedLogging)
   {
     CLog::Log(LOGINFO, "Combined Delay: {} ms", delay * 1000);
@@ -716,10 +722,13 @@ void CAESinkAUDIOTRACK::GetDelay(AEDelayStatus& status)
   if (delay < 0.0)
     delay = 0.0;
 
+  // even with the new API (hw_delay), delay is not smooth as expected for IEC
+  // though normal RAW still is really bad delay wise
   const double d = GetMovingAverageDelay(delay);
 
   // Audiotrack is caching more than we though it would
-  if (d > m_audiotrackbuffer_sec)
+  // For passthrough RAW keep the original buffer (used in AddPackets function)
+  if (d > m_audiotrackbuffer_sec && !rawPt)
     m_audiotrackbuffer_sec = d;
 
   // track delay in local member
@@ -855,7 +864,7 @@ unsigned int CAESinkAUDIOTRACK::AddPackets(uint8_t **data, unsigned int frames, 
         m_pause_ms -= m_format.m_streamInfo.GetDuration();
         extra_sleep /= 4; // fillup after Addpause
       }
-      else if (m_delay < 0.128)
+      else if (m_delay < m_audiotrackbuffer_sec)
       {
         // care for underrun
         extra_sleep /= 2;
@@ -879,8 +888,11 @@ unsigned int CAESinkAUDIOTRACK::AddPackets(uint8_t **data, unsigned int frames, 
     {
       double time_should_ms = 1000.0 * written_frames / m_format.m_sampleRate;
       double time_off = time_should_ms - time_to_add_ms;
-      if (time_off > 0)
-        usleep(time_off * 500); // sleep half the error away
+      // help a little by sleeping, but not too much to avoid A/V sync issue
+      if (time_off > 0.0 && time_off > time_should_ms / 2.0)
+      {
+        usleep(time_off * 250); // sleep quarter the error away
+      }
     }
   }
 
@@ -1181,4 +1193,3 @@ double CAESinkAUDIOTRACK::GetMovingAverageDelay(double newestdelay)
 
   return sum * denom;
 }
-
