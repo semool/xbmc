@@ -1313,6 +1313,7 @@ msgstr ""
 
 #. Window screen calibration: calibration of subtitle bar
 #: xbmc/settings/windows/GUIWindowSettingsScreenCalibration.cpp
+#: xbmc/video/PlayerController.cpp
 msgctxt "#277"
 msgid "Subtitle positioning"
 msgstr ""
@@ -6915,6 +6916,7 @@ msgstr ""
 
 #: addons/skin.estuary/xml/Custom_1101_SettingsList.xml
 #: xbmc/games/dialogs/osd/DialogGameVolume.cpp
+#: system/settings/settings.xml
 msgctxt "#13376"
 msgid "Volume"
 msgstr ""
@@ -19301,7 +19303,7 @@ msgstr ""
 #. Description of setting with label #21460 "Subtitle location on screen"
 #: system/settings/settings.xml
 msgctxt "#36192"
-msgid "Location of subtitles on the screen. [Manual] The subtitles position can be customised by using video calibration settings. [Below] / [Above video] When possible the subtitles will be positioned inside the black bars (depends on video encoding). Please note that some forced positions in the subtitles cannot be changed."
+msgid "Location of subtitles on the screen. [Below] / [Above video] When possible the subtitles will be positioned inside the black bars (depends on video encoding). Please note that some forced positions in the subtitles cannot be changed."
 msgstr ""
 
 #. Description of settings category with label #14087 "DVDs"
@@ -23094,4 +23096,10 @@ msgstr ""
 #: xbmc/Application.cpp
 msgctxt "#39180"
 msgid "Building font cache in progress - please wait"
+msgstr ""
+
+#. Helper text for gui sound volume setting
+#: system/settings/settings.xml
+msgctxt "#39181"
+msgid "Relative volume for gui sounds"
 msgstr ""
