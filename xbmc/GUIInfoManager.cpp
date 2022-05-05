@@ -7034,6 +7034,39 @@ const infomap fanart_labels[] =  {{ "color1",           FANART_COLOR1 },
 /// \subsection modules__infolabels_boolean_conditions_Skin Skin
 /// \table_start
 ///   \table_h3{ Labels, Type, Description }
+///   \table_row3{   <b>`Skin.HasSetting(setting)`</b>,
+///                  \anchor Skin_HasSetting
+///                  _boolean_,
+///     @param setting - the requested skin setting
+///     @return **True** if the requested skin setting is true\, false otherwise.
+///     @sa \link Skin_SetBool `Skin.SetBool(setting[\,value])`
+///     <p>
+///   }
+///   \table_row3{   <b>`Skin.String(setting)`</b>,
+///                  \anchor Skin_StringValue
+///                  _string_,
+///     @param setting - the requested skin setting
+///     @return The value of the requested string setting (as a string)
+///     @sa \link Skin_SetString `Skin.SetString(setting[\,value])`\endlink
+///     <p>
+///   }
+///   \table_row3{   <b>`Skin.String(setting[\,value])`</b>,
+///                  \anchor Skin_StringCompare
+///                  _boolean_,
+///     @param setting - the requested skin setting
+///     @param value [opt] - the string value to compare the requested setting to
+///     @return **True** if the setting value equals the provided value\, false otherwise.
+///     @sa \link Skin_SetString `Skin.SetString(setting[\,value])`\endlink
+///     <p>
+///   }
+///   \table_row3{   <b>`Skin.HasTheme(theme)`</b>,
+///                  \anchor Skin_HasTheme
+///                  _boolean_,
+///     @param theme - the requested skin theme
+///     @return **True** if the requested theme is enabled\, false otherwise.
+///     @sa \link Skin_CycleTheme `Skin.Theme()`\endlink and \link Skin_CurrentTheme `Skin.CurrentTheme`\endlink.
+///     <p>
+///   }
 ///   \table_row3{   <b>`Skin.CurrentTheme`</b>,
 ///                  \anchor Skin_CurrentTheme
 ///                  _string_,
@@ -7058,6 +7091,15 @@ const infomap fanart_labels[] =  {{ "color1",           FANART_COLOR1 },
 ///     @return the current fontset from `Font.xml`.
 ///     <p><hr>
 ///     @skinning_v18 **[New Infolabel]** \link Skin_Font `Skin.Font`\endlink
+///     <p>
+///   }
+///   \table_row3{   <b>`Skin.Numeric(settingid)`</b>,
+///                  \anchor Skin_Numeric
+///                  _integer_,
+///     @return return the setting value as an integer/numeric value.
+///     @sa \link Skin_SetNumeric `Skin.SetNumeric(settingid)`\endlink
+///     <p><hr>
+///     @skinning_v20 **[New Infolabel]** \link Skin_Numeric `Skin.Numeric(settingid)`\endlink
 ///     <p>
 ///   }
 /// \table_end
@@ -10078,7 +10120,12 @@ int CGUIInfoManager::TranslateSingleString(const std::string &strCondition, bool
           else
             return AddMultiInfo(CGUIInfo(SKIN_STRING, CSkinSettings::GetInstance().TranslateString(prop.param(0))));
         }
-        if (prop.name == "hassetting")
+        else if (prop.name == "numeric")
+        {
+          return AddMultiInfo(
+              CGUIInfo(SKIN_INTEGER, CSkinSettings::GetInstance().TranslateString(prop.param(0))));
+        }
+        else if (prop.name == "hassetting")
           return AddMultiInfo(CGUIInfo(SKIN_BOOL, CSkinSettings::GetInstance().TranslateBool(prop.param(0))));
         else if (prop.name == "hastheme")
           return AddMultiInfo(CGUIInfo(SKIN_HAS_THEME, prop.param(0)));
