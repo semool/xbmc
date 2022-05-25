@@ -17,6 +17,9 @@ if(ENABLE_INTERNAL_FMT)
 
   set(MODULE_LC fmt)
 
+  # fmt debug uses postfix d for all platforms
+  set(FMT_DEBUG_POSTFIX d)
+
   SETUP_BUILD_VARS()
 
   if(APPLE)
@@ -27,7 +30,7 @@ if(ENABLE_INTERNAL_FMT)
 
   if(WIN32 OR WINDOWS_STORE)
     # find the path to the patch executable
-    find_program(PATCH_EXECUTABLE NAMES patch patch.exe REQUIRED)
+    find_package(Patch MODULE REQUIRED)
 
     set(patch ${CMAKE_SOURCE_DIR}/tools/depends/target/${MODULE_LC}/001-windows-pdb-symbol-gen.patch)
     PATCH_LF_CHECK(${patch})

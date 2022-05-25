@@ -141,6 +141,13 @@ macro(BUILD_DEP_TARGET)
     # if MODULE has set a manual build type, use it, otherwise use project build type
     if(${MODULE}_BUILD_TYPE)
       list(APPEND CMAKE_ARGS "-DCMAKE_BUILD_TYPE=${${MODULE}_BUILD_TYPE}")
+      # Build_type is forced, so unset the opposite <MODULE>_LIBRARY_<TYPE> to only give
+      # select_library_configurations one library name to choose from
+      if(${MODULE}_BUILD_TYPE STREQUAL "Release")
+        unset(${MODULE}_LIBRARY_DEBUG)
+      else()
+        unset(${MODULE}_LIBRARY_RELEASE)
+      endif()
     else()
       # single config generator (ie Make, Ninja)
       if(CMAKE_BUILD_TYPE)
@@ -217,7 +224,7 @@ endmacro()
 # Macro to test format of line endings of a patch
 # Windows Specific
 macro(PATCH_LF_CHECK patch)
-  if(WIN32 OR WINDOWS_STORE)
+  if(CMAKE_HOST_WIN32)
     # On Windows "patch.exe" can only handle CR-LF line-endings.
     # Our patches have LF-only line endings - except when they
     # have been checked out as part of a dependency hosted on Git
