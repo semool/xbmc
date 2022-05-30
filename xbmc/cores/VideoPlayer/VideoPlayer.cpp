@@ -3682,8 +3682,9 @@ bool CVideoPlayer::OpenVideoStream(CDVDStreamInfo& hint, bool reset)
     return false;
 
   // set desired refresh rate
-  if (m_playerOptions.fullscreen && CServiceBroker::GetWinSystem()->GetGfxContext().IsFullScreenRoot() &&
-      hint.fpsrate != 0 && hint.fpsscale != 0)
+  if (m_CurrentVideo.id < 0 && m_playerOptions.fullscreen &&
+      CServiceBroker::GetWinSystem()->GetGfxContext().IsFullScreenRoot() && hint.fpsrate != 0 &&
+      hint.fpsscale != 0)
   {
     if (CServiceBroker::GetSettingsComponent()->GetSettings()->GetInt(CSettings::SETTING_VIDEOPLAYER_ADJUSTREFRESHRATE) != ADJUST_REFRESHRATE_OFF)
     {
@@ -4258,16 +4259,19 @@ bool CVideoPlayer::OnAction(const CAction &action)
     case ACTION_SHOW_VIDEOMENU:   // start button
       {
         THREAD_ACTION(action);
-        CLog::Log(LOGDEBUG, " - go to menu");
-        pMenus->OnMenu();
-        if (m_playSpeed == DVD_PLAYSPEED_PAUSE)
+        CLog::LogF(LOGDEBUG, "Trying to go to the menu");
+        if (pMenus->OnMenu())
         {
-          SetPlaySpeed(DVD_PLAYSPEED_NORMAL);
-          m_callback.OnPlayBackResumed();
+          if (m_playSpeed == DVD_PLAYSPEED_PAUSE)
+          {
+            SetPlaySpeed(DVD_PLAYSPEED_NORMAL);
+            m_callback.OnPlayBackResumed();
+          }
+
+          // send a message to everyone that we've gone to the menu
+          CGUIMessage msg(GUI_MSG_VIDEO_MENU_STARTED, 0, 0);
+          CServiceBroker::GetGUI()->GetWindowManager().SendThreadMessage(msg);
         }
-        // send a message to everyone that we've gone to the menu
-        CGUIMessage msg(GUI_MSG_VIDEO_MENU_STARTED, 0, 0);
-        CServiceBroker::GetGUI()->GetWindowManager().SendThreadMessage(msg);
         return true;
       }
       break;
