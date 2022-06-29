@@ -31,7 +31,6 @@ DEPENDS = \
   libjpeg-turbo \
   liblzo2 \
   libmicrohttpd \
-  libnfs \
   libplist \
   libpng \
   libshairplay \
@@ -43,7 +42,6 @@ DEPENDS = \
   nghttp2 \
   openssl \
   p8-platform \
-  pcre \
   python3 \
   pythonmodule-pil \
   pythonmodule-pycryptodome \
@@ -80,7 +78,7 @@ endif
 
 ifeq ($(OS),android)
   EXCLUDED_DEPENDS = libcec libusb gtest
-  DEPENDS += dummy-libxbmc libuuid libzip
+  DEPENDS += dummy-libxbmc libuuid
   PYMODULE_DEPS = dummy-libxbmc
   LIBUUID = libuuid
 endif
