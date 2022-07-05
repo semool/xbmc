@@ -40,11 +40,6 @@
 // 6 mins (360s) cached context timeout
 #define CONTEXT_TIMEOUT 360000
 
-// return codes for getContextForExport
-#define CONTEXT_INVALID 0 // getcontext failed
-#define CONTEXT_NEW 1 // new context created
-#define CONTEXT_CACHED 2 // context cached and therefore already mounted (no new mount needed)
-
 #if defined(TARGET_WINDOWS)
 #define S_IRGRP 0
 #define S_IROTH 0
@@ -168,9 +163,9 @@ struct nfs_context *CNfsConnection::getContextFromMap(const std::string &exportn
   return pRet;
 }
 
-int CNfsConnection::getContextForExport(const std::string &exportname)
+CNfsConnection::ContextStatus CNfsConnection::getContextForExport(const std::string& exportname)
 {
-  int ret = CONTEXT_INVALID;
+  CNfsConnection::ContextStatus ret = CNfsConnection::ContextStatus::INVALID;
 
   clearMembers();
 
@@ -193,12 +188,12 @@ int CNfsConnection::getContextForExport(const std::string &exportname)
       tmp.pContext = m_pNfsContext;
       tmp.lastAccessedTime = std::chrono::steady_clock::now();
       m_openContextMap[exportname] = tmp; //add context to list of all contexts
-      ret = CONTEXT_NEW;
+      ret = CNfsConnection::ContextStatus::NEW;
     }
   }
   else
   {
-    ret = CONTEXT_CACHED;
+    ret = CNfsConnection::ContextStatus::CACHED;
     CLog::Log(LOGDEBUG,"NFS: Using cached context.");
   }
   m_lastAccessedTime = std::chrono::steady_clock::now();
@@ -281,14 +276,16 @@ bool CNfsConnection::Connect(const CURL& url, std::string &relativePath)
   if ((ret && (exportPath != m_exportPath || url.GetHostName() != m_hostName)) ||
       duration.count() > CONTEXT_TIMEOUT)
   {
-    int contextRet = getContextForExport(url.GetHostName() + exportPath);
+    CNfsConnection::ContextStatus contextRet = getContextForExport(url.GetHostName() + exportPath);
 
-    if(contextRet == CONTEXT_INVALID)//we need a new context because sharename or hostname has changed
+    // we need a new context because sharename or hostname has changed
+    if (contextRet == CNfsConnection::ContextStatus::INVALID)
     {
       return false;
     }
 
-    if(contextRet == CONTEXT_NEW) //new context was created - we need to mount it
+    // new context was created - we need to mount it
+    if (contextRet == CNfsConnection::ContextStatus::NEW)
     {
       //we connect to the directory of the path. This will be the "root" path of this connection then.
       //So all fileoperations are relative to this mountpoint...
@@ -310,7 +307,7 @@ bool CNfsConnection::Connect(const CURL& url, std::string &relativePath)
     m_readChunkSize = nfs_get_readmax(m_pNfsContext);
     m_writeChunkSize = nfs_get_writemax(m_pNfsContext);
 
-    if(contextRet == CONTEXT_NEW)
+    if (contextRet == CNfsConnection::ContextStatus::NEW)
     {
       CLog::Log(LOGDEBUG, "NFS: chunks: r/w {}/{}", (int)m_readChunkSize, (int)m_writeChunkSize);
     }
@@ -421,7 +418,7 @@ void CNfsConnection::keepAlive(const std::string& _exportPath, struct nfsfh* _pF
   nfs_lseek(pContext, _pFileHandle, offset, SEEK_SET, &offset);
 }
 
-int CNfsConnection::stat(const CURL &url, NFSSTAT *statbuff)
+int CNfsConnection::stat(const CURL& url, nfs_stat_64* statbuff)
 {
   std::unique_lock<CCriticalSection> lock(*this);
   int nfsRet = 0;
@@ -444,7 +441,7 @@ int CNfsConnection::stat(const CURL &url, NFSSTAT *statbuff)
 
       if(nfsRet == 0)
       {
-        nfsRet = nfs_stat(pTmpContext, relativePath.c_str(), statbuff);
+        nfsRet = nfs_stat64(pTmpContext, relativePath.c_str(), statbuff);
       }
       else
       {
@@ -576,7 +573,6 @@ bool CNFSFile::Open(const CURL& url)
   return true;
 }
 
-
 bool CNFSFile::Exists(const CURL& url)
 {
   return Stat(url,NULL) == 0;
@@ -597,10 +593,9 @@ int CNFSFile::Stat(const CURL& url, struct __stat64* buffer)
   if(!gNfsConnection.Connect(url,filename))
     return -1;
 
+  nfs_stat_64 tmpBuffer = {};
 
-  NFSSTAT tmpBuffer = {};
-
-  ret = nfs_stat(gNfsConnection.GetNfsContext(), filename.c_str(), &tmpBuffer);
+  ret = nfs_stat64(gNfsConnection.GetNfsContext(), filename.c_str(), &tmpBuffer);
 
   //if buffer == NULL we where called from Exists - in that case don't spam the log with errors
   if (ret != 0 && buffer != NULL)
@@ -617,17 +612,17 @@ int CNFSFile::Stat(const CURL& url, struct __stat64* buffer)
       memcpy(buffer, &tmpBuffer, sizeof(struct __stat64));
 #else
       memset(buffer, 0, sizeof(struct __stat64));
-      buffer->st_dev = tmpBuffer.st_dev;
-      buffer->st_ino = tmpBuffer.st_ino;
-      buffer->st_mode = tmpBuffer.st_mode;
-      buffer->st_nlink = tmpBuffer.st_nlink;
-      buffer->st_uid = tmpBuffer.st_uid;
-      buffer->st_gid = tmpBuffer.st_gid;
-      buffer->st_rdev = tmpBuffer.st_rdev;
-      buffer->st_size = tmpBuffer.st_size;
-      buffer->st_atime = tmpBuffer.st_atime;
-      buffer->st_mtime = tmpBuffer.st_mtime;
-      buffer->st_ctime = tmpBuffer.st_ctime;
+      buffer->st_dev = tmpBuffer.nfs_dev;
+      buffer->st_ino = tmpBuffer.nfs_ino;
+      buffer->st_mode = tmpBuffer.nfs_mode;
+      buffer->st_nlink = tmpBuffer.nfs_nlink;
+      buffer->st_uid = tmpBuffer.nfs_uid;
+      buffer->st_gid = tmpBuffer.nfs_gid;
+      buffer->st_rdev = tmpBuffer.nfs_rdev;
+      buffer->st_size = tmpBuffer.nfs_size;
+      buffer->st_atime = tmpBuffer.nfs_atime;
+      buffer->st_mtime = tmpBuffer.nfs_mtime;
+      buffer->st_ctime = tmpBuffer.nfs_ctime;
 #endif
     }
   }
