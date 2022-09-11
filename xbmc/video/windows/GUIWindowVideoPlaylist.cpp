@@ -21,6 +21,7 @@
 #include "guilib/GUIWindowManager.h"
 #include "guilib/LocalizeStrings.h"
 #include "input/Key.h"
+#include "playlists/PlayList.h"
 #include "playlists/PlayListM3U.h"
 #include "settings/MediaSettings.h"
 #include "settings/Settings.h"
@@ -322,10 +323,10 @@ bool CGUIWindowVideoPlaylist::OnPlayMedia(int iItem, const std::string &player)
     std::string strPath = pItem->GetPath();
     CServiceBroker::GetPlaylistPlayer().SetCurrentPlaylist(PLAYLIST_VIDEO);
     // need to update Playlist FileItem's startOffset and resumePoint based on GUIWindowVideoPlaylist FileItem
-    if (pItem->m_lStartOffset == STARTOFFSET_RESUME)
+    if (pItem->GetStartOffset() == STARTOFFSET_RESUME)
     {
       CFileItemPtr pPlaylistItem = CServiceBroker::GetPlaylistPlayer().GetPlaylist(PLAYLIST_VIDEO)[iItem];
-      pPlaylistItem->m_lStartOffset = pItem->m_lStartOffset;
+      pPlaylistItem->SetStartOffset(pItem->GetStartOffset());
       if (pPlaylistItem->HasVideoInfoTag() && pItem->HasVideoInfoTag())
         pPlaylistItem->GetVideoInfoTag()->SetResumePoint(pItem->GetVideoInfoTag()->GetResumePoint());
     }

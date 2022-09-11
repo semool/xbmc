@@ -9,9 +9,9 @@
 #include "AnnouncementManager.h"
 
 #include "FileItem.h"
-#include "PlayListPlayer.h"
 #include "music/MusicDatabase.h"
 #include "music/tags/MusicInfoTag.h"
+#include "playlists/PlayList.h"
 #include "pvr/channels/PVRChannel.h"
 #include "threads/SingleLock.h"
 #include "utils/StringUtils.h"
@@ -262,7 +262,7 @@ void CAnnouncementManager::DoAnnounce(AnnouncementFlag flag,
       if (musicdatabase.Open())
       {
         CSong song;
-        if (musicdatabase.GetSongByFileName(item->GetPath(), song, item->m_lStartOffset))
+        if (musicdatabase.GetSongByFileName(item->GetPath(), song, item->GetStartOffset()))
         {
           item->GetMusicInfoTag()->SetSong(song);
           id = item->GetMusicInfoTag()->GetDatabaseId();

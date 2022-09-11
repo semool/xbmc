@@ -10,6 +10,7 @@
 
 #include "Application.h"
 #include "Autorun.h"
+#include "PlayListPlayer.h"
 #include "ServiceBroker.h"
 #include "filesystem/Directory.h"
 #include "guilib/GUIComponent.h"
@@ -295,7 +296,7 @@ bool CResume::Execute(const CFileItemPtr& itemIn) const
     return MEDIA_DETECT::CAutorun::PlayDisc(item.GetPath(), true, false);
 #endif
 
-  item.m_lStartOffset = STARTOFFSET_RESUME;
+  item.SetStartOffset(STARTOFFSET_RESUME);
   SetPathAndPlay(item);
   return true;
 };

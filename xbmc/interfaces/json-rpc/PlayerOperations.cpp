@@ -27,6 +27,7 @@
 #include "messaging/ApplicationMessenger.h"
 #include "music/MusicDatabase.h"
 #include "pictures/GUIWindowSlideShow.h"
+#include "playlists/PlayList.h"
 #include "pvr/PVRManager.h"
 #include "pvr/PVRPlaybackState.h"
 #include "pvr/channels/PVRChannel.h"
@@ -850,11 +851,12 @@ JSONRPC_STATUS CPlayerOperations::Open(const std::string &method, ITransportLaye
         if (list.Size() == 1)
         {
           if (optionResume.isBoolean() && optionResume.asBoolean())
-            list[0]->m_lStartOffset = STARTOFFSET_RESUME;
+            list[0]->SetStartOffset(STARTOFFSET_RESUME);
           else if (optionResume.isDouble())
             list[0]->SetProperty("StartPercent", optionResume);
           else if (optionResume.isObject())
-            list[0]->m_lStartOffset = CUtil::ConvertSecsToMilliSecs(ParseTimeInSeconds(optionResume));
+            list[0]->SetStartOffset(
+                CUtil::ConvertSecsToMilliSecs(ParseTimeInSeconds(optionResume)));
         }
 
         auto l = new CFileItemList(); //don't delete
