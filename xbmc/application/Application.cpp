@@ -8,8 +8,6 @@
 
 #include "Application.h"
 
-#include "AppInboundProtocol.h"
-#include "AppParams.h"
 #include "Autorun.h"
 #include "GUIInfoManager.h"
 #include "HDRStatus.h"
@@ -19,6 +17,8 @@
 #include "Util.h"
 #include "addons/Skin.h"
 #include "addons/VFSEntry.h"
+#include "application/AppInboundProtocol.h"
+#include "application/AppParams.h"
 #include "cores/AudioEngine/Engines/ActiveAE/ActiveAE.h"
 #include "cores/IPlayer.h"
 #include "cores/playercorefactory/PlayerCoreFactory.h"
@@ -245,7 +245,6 @@ CApplication::CApplication(void)
 
 CApplication::~CApplication(void)
 {
-  delete m_pInertialScrollingHandler;
 }
 
 bool CApplication::OnEvent(XBMC_Event& newEvent)
