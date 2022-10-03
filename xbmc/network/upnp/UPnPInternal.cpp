@@ -11,19 +11,17 @@
 #include "ServiceBroker.h"
 #include "TextureDatabase.h"
 #include "ThumbLoader.h"
-#include "UPnP.h"
 #include "UPnPServer.h"
 #include "URL.h"
 #include "Util.h"
-#include "filesystem/File.h"
 #include "filesystem/MusicDatabaseDirectory.h"
 #include "filesystem/StackDirectory.h"
 #include "filesystem/VideoDatabaseDirectory.h"
-#include "music/MusicDatabase.h"
 #include "music/tags/MusicInfoTag.h"
 #include "settings/AdvancedSettings.h"
 #include "settings/Settings.h"
 #include "settings/SettingsComponent.h"
+#include "settings/lib/Setting.h"
 #include "utils/ContentUtils.h"
 #include "utils/LangCodeExpander.h"
 #include "utils/StringUtils.h"
@@ -949,8 +947,8 @@ PopulateTagFromObject(CVideoInfoTag&         tag,
     return NPT_SUCCESS;
 }
 
-CFileItemPtr BuildObject(PLT_MediaObject* entry,
-                         UPnPService      upnp_service /* = UPnPServiceNone */)
+std::shared_ptr<CFileItem> BuildObject(PLT_MediaObject* entry,
+                                       UPnPService upnp_service /* = UPnPServiceNone */)
 {
   NPT_String ObjectClass = entry->m_ObjectClass.type.ToLowercase();
 
@@ -1174,7 +1172,7 @@ bool GetResource(const PLT_MediaObject* entry, CFileItem& item)
   return true;
 }
 
-CFileItemPtr GetFileItem(const NPT_String& uri, const NPT_String& meta)
+std::shared_ptr<CFileItem> GetFileItem(const NPT_String& uri, const NPT_String& meta)
 {
     PLT_MediaObjectListReference list;
     PLT_MediaObject*             object = NULL;

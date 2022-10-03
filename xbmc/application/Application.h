@@ -8,7 +8,6 @@
 
 #pragma once
 
-#include "ServiceManager.h"
 #include "application/ApplicationComponents.h"
 #include "application/ApplicationEnums.h"
 #include "application/ApplicationPlayerCallback.h"
@@ -17,13 +16,11 @@
 #include "application/ApplicationSkinHandling.h"
 #include "application/ApplicationStackHelper.h"
 #include "application/ApplicationVolumeHandling.h"
-#include "cores/IPlayerCallback.h"
 #include "guilib/IMsgTargetCallback.h"
 #include "guilib/IWindowManagerCallback.h"
 #include "messaging/IMessageTarget.h"
 #include "playlists/PlayListTypes.h"
 #include "threads/SystemClock.h"
-#include "threads/Thread.h"
 #include "utils/GlobalsHandling.h"
 #include "utils/Stopwatch.h"
 #include "windowing/Resolution.h"
@@ -37,22 +34,25 @@
 #include <vector>
 
 class CAction;
+class CAppInboundProtocol;
+class CBookmark;
 class CFileItem;
 class CFileItemList;
+class CGUIComponent;
+class CInertialScrollingHandler;
 class CKey;
 class CSeekHandler;
-class CInertialScrollingHandler;
-class CSplash;
-class CBookmark;
-class CGUIComponent;
-class CAppInboundProtocol;
+class CServiceManager;
 class CSettingsComponent;
+class CSplash;
+class CWinSystemBase;
 
 namespace ADDON
 {
   class CSkinInfo;
   class IAddon;
   typedef std::shared_ptr<IAddon> AddonPtr;
+  class CAddonInfo;
 }
 
 namespace ANNOUNCEMENT
@@ -222,15 +222,6 @@ protected:
   std::deque<XBMC_Event> m_portEvents;
   CCriticalSection m_portSection;
 
-#if defined(TARGET_DARWIN_IOS)
-  friend class CWinEventsIOS;
-#endif
-#if defined(TARGET_DARWIN_TVOS)
-  friend class CWinEventsTVOS;
-#endif
-#if defined(TARGET_ANDROID)
-  friend class CWinEventsAndroid;
-#endif
   // timer information
   CStopWatch m_restartPlayerTimer;
   CStopWatch m_frameTime;
@@ -253,7 +244,7 @@ protected:
 
   std::unique_ptr<CInertialScrollingHandler> m_pInertialScrollingHandler;
 
-  std::vector<ADDON::AddonInfoPtr>
+  std::vector<std::shared_ptr<ADDON::CAddonInfo>>
       m_incompatibleAddons; /*!< Result of addon migration (incompatible addon infos) */
 
 public:
