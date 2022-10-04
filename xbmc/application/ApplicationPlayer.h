@@ -15,7 +15,6 @@
 #include "playlists/PlayListTypes.h"
 #include "threads/CriticalSection.h"
 #include "threads/SystemClock.h"
-#include "windowing/Resolution.h"
 
 #include <memory>
 #include <string>
@@ -76,6 +75,7 @@ public:
   bool CanPause() const;
   bool CanSeek() const;
   void DoAudioWork();
+  int GetAudioDelay() const;
   void GetAudioCapabilities(std::vector<int>& audioCaps) const;
   int GetAudioStream();
   int GetAudioStreamCount() const;
@@ -89,6 +89,7 @@ public:
   float GetPercentage() const;
   std::string GetPlayerState();
   PLAYLIST::Id GetPreferredPlaylist() const;
+  int GetSubtitleDelay() const;
   int GetSubtitle();
   void GetSubtitleCapabilities(std::vector<int>& subCaps) const;
   int GetSubtitleCount() const;
