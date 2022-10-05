@@ -26,6 +26,7 @@
 #include "settings/DisplaySettings.h"
 #include "settings/Settings.h"
 #include "settings/SettingsComponent.h"
+#include "utils/StringUtils.h"
 #include "utils/SystemInfo.h"
 #include "utils/log.h"
 #include "windowing/GraphicContext.h"
@@ -1284,4 +1285,11 @@ RECT CWinSystemWin32::GetVirtualScreenRect()
   rect.bottom = GetSystemMetrics(SM_CYVIRTUALSCREEN) + rect.top;
 
   return rect;
+}
+
+int CWinSystemWin32::GetGuiSdrPeakLuminance() const
+{
+  const auto settings = CServiceBroker::GetSettingsComponent()->GetSettings();
+
+  return settings->GetInt(CSettings::SETTING_VIDEOSCREEN_GUISDRPEAKLUMINANCE);
 }

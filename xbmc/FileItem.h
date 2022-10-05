@@ -15,7 +15,6 @@
 
 #include "LockType.h"
 #include "XBDateTime.h"
-#include "addons/IAddon.h"
 #include "guilib/GUIListItem.h"
 #include "threads/CriticalSection.h"
 #include "utils/IArchivable.h"
@@ -28,6 +27,11 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+namespace ADDON
+{
+class IAddon;
+}
 
 namespace MUSIC_INFO
 {
@@ -113,8 +117,6 @@ public:
   explicit CFileItem(const MUSIC_INFO::CMusicInfoTag& music);
   explicit CFileItem(const CVideoInfoTag& movie);
   explicit CFileItem(const std::shared_ptr<PVR::CPVREpgInfoTag>& tag);
-  CFileItem(const std::shared_ptr<PVR::CPVREpgInfoTag>& tag,
-            const std::shared_ptr<PVR::CPVRChannelGroupMember>& groupMember);
   explicit CFileItem(const std::shared_ptr<PVR::CPVREpgSearchFilter>& filter);
   explicit CFileItem(const std::shared_ptr<PVR::CPVRChannelGroupMember>& channelGroupMember);
   explicit CFileItem(const std::shared_ptr<PVR::CPVRRecording>& record);
@@ -629,10 +631,9 @@ private:
   CBookmark GetResumePoint() const;
 
   /*!
-   \brief If given channel is radio, fill item's music tag from given epg tag and channel info.
+   \brief Fill item's music tag from given epg tag.
    */
-  void FillMusicInfoTag(const std::shared_ptr<PVR::CPVRChannelGroupMember>& groupMember,
-                        const std::shared_ptr<PVR::CPVREpgInfoTag>& tag);
+  void FillMusicInfoTag(const std::shared_ptr<PVR::CPVREpgInfoTag>& tag);
 
   std::string m_strPath;            ///< complete path to item
   std::string m_strDynPath;
