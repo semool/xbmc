@@ -26,6 +26,7 @@
 #include "events/NotificationEvent.h"
 #include "favourites/FavouritesService.h"
 #include "filesystem/Directory.h"
+#include "filesystem/File.h"
 #include "guilib/GUIComponent.h"
 #include "guilib/GUIWindowManager.h" // for callback
 #include "guilib/LocalizeStrings.h"
@@ -423,6 +424,11 @@ bool CAddonInstaller::InstallFromZip(const std::string &path)
       eventLog->AddWithNotification(EventPtr(
           new CNotificationEvent(24045, StringUtils::Format(g_localizeStrings.Get(24143), path),
                                  "special://xbmc/media/icon256x256.png", EventLevel::Error)));
+
+    CLog::Log(
+        LOGERROR,
+        "CAddonInstaller: installing addon failed '{}' - itemsize: {}, first item is folder: {}",
+        CURL::GetRedacted(path), items.Size(), items[0]->m_bIsFolder);
     return false;
   }
 
