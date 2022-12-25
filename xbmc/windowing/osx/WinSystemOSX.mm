@@ -152,7 +152,7 @@ NSString* screenNameForDisplay(NSUInteger screenIdx)
   else
   {
     // ensure screen name is unique by appending displayid
-    screenName = [screenName stringByAppendingFormat:@" (%@)", [@(displayID) stringValue]];
+    screenName = [screenName stringByAppendingFormat:@" (%@)", [@(displayID - 1) stringValue]];
   }
 
   return screenName;
@@ -237,7 +237,7 @@ CFArrayRef GetAllDisplayModes(CGDirectDisplayID display)
 
 // try to find mode that matches the desired size, refreshrate
 // non interlaced, nonstretched, safe for hardware
-CGDisplayModeRef GetMode(int width, int height, double refreshrate, NSUInteger screenIdx)
+CGDisplayModeRef GetMode(size_t width, size_t height, double refreshrate, NSUInteger screenIdx)
 {
   if (screenIdx >= [[NSScreen screens] count])
     return nullptr;
@@ -245,7 +245,9 @@ CGDisplayModeRef GetMode(int width, int height, double refreshrate, NSUInteger s
   bool stretched;
   bool interlaced;
   bool safeForHardware;
-  int w, h, bitsperpixel;
+  size_t w;
+  size_t h;
+  size_t bitsperpixel;
   double rate;
   RESOLUTION_INFO res;
 
@@ -574,8 +576,8 @@ void CWinSystemOSX::HandleOnResetDevice()
 void CWinSystemOSX::AnnounceOnResetDevice()
 {
   double currentFps = m_refreshRate;
-  int w = 0;
-  int h = 0;
+  size_t w = 0;
+  size_t h = 0;
   const NSUInteger currentScreenIdx = m_lastDisplayNr;
   // ensure that graphics context knows about the current refreshrate before
   // doing the callbacks
@@ -702,7 +704,7 @@ bool CWinSystemOSX::CreateNewWindow(const std::string& name, bool fullScreen, RE
 
   // get screen refreshrate - this is needed
   // when we startup in windowed mode and don't run through SetFullScreen
-  int dummy;
+  size_t dummy;
   GetScreenResolution(&dummy, &dummy, &m_refreshRate, m_lastDisplayNr);
 
   // register platform dependent objects
@@ -966,8 +968,8 @@ void CWinSystemOSX::UpdateResolutions()
   CWinSystemBase::UpdateResolutions();
 
   // Add desktop resolution
-  int w;
-  int h;
+  size_t w;
+  size_t h;
   double fps;
 
   const NSUInteger dispIdx =
@@ -976,7 +978,7 @@ void CWinSystemOSX::UpdateResolutions()
   GetScreenResolution(&w, &h, &fps, dispIdx);
   NSString* const dispName = screenNameForDisplay(dispIdx);
   UpdateDesktopResolution(CDisplaySettings::GetInstance().GetResolutionInfo(RES_DESKTOP),
-                          dispName.UTF8String, w, h, fps, 0);
+                          dispName.UTF8String, static_cast<int>(w), static_cast<int>(h), fps, 0);
 
   CDisplaySettings::GetInstance().ClearCustomResolutions();
 
@@ -986,7 +988,7 @@ void CWinSystemOSX::UpdateResolutions()
   CDisplaySettings::GetInstance().ApplyCalibrations();
 }
 
-void CWinSystemOSX::GetScreenResolution(int* w, int* h, double* fps, unsigned long screenIdx)
+void CWinSystemOSX::GetScreenResolution(size_t* w, size_t* h, double* fps, unsigned long screenIdx)
 {
   CGDirectDisplayID display_id = (CGDirectDisplayID)GetDisplayID(screenIdx);
   CGDisplayModeRef mode = CGDisplayCopyDisplayMode(display_id);
@@ -1030,8 +1032,8 @@ bool CWinSystemOSX::SwitchToVideoMode(int width, int height, double refreshrate)
       // still no match? fallback to current resolution of the display which HAS to work [tm]
       if (!dispMode)
       {
-        int currentWidth;
-        int currentHeight;
+        size_t currentWidth;
+        size_t currentHeight;
         double currentRefresh;
 
         GetScreenResolution(&currentWidth, &currentHeight, &currentRefresh, screenIdx);
@@ -1069,7 +1071,9 @@ void CWinSystemOSX::FillInVideoModes()
     bool stretched;
     bool interlaced;
     bool safeForHardware;
-    int w, h, bitsperpixel;
+    size_t w;
+    size_t h;
+    size_t bitsperpixel;
     double refreshrate;
     RESOLUTION_INFO res;
 
@@ -1109,8 +1113,8 @@ void CWinSystemOSX::FillInVideoModes()
         // all others are only logged above...
         if (disp == dispIdx)
         {
-          UpdateDesktopResolution(res, (dispName != nil) ? [dispName UTF8String] : "Unknown", w, h,
-                                  refreshrate, 0);
+          UpdateDesktopResolution(res, (dispName != nil) ? [dispName UTF8String] : "Unknown",
+                                  static_cast<int>(w), static_cast<int>(h), refreshrate, 0);
           CServiceBroker::GetWinSystem()->GetGfxContext().ResetOverscan(res);
           CDisplaySettings::GetInstance().AddResolutionInfo(res);
         }
@@ -1168,7 +1172,7 @@ void CWinSystemOSX::OnMove(int x, int y)
   static double oldRefreshRate = m_refreshRate;
   Cocoa_CVDisplayLinkUpdate();
 
-  int dummy = 0;
+  size_t dummy = 0;
   GetScreenResolution(&dummy, &dummy, &m_refreshRate, m_lastDisplayNr);
 
   if (oldRefreshRate != m_refreshRate)
@@ -1257,10 +1261,12 @@ std::vector<std::string> CWinSystemOSX::GetConnectedOutputs()
   std::vector<std::string> outputs;
   outputs.push_back("Default");
 
+  // screen 0 is always the "Default" setting, avoid duplicating the available
+  // screens here.
   const NSUInteger numDisplays = NSScreen.screens.count;
-  if (numDisplays > 0)
+  if (numDisplays > 1)
   {
-    for (NSUInteger disp = 0; disp <= numDisplays - 1; disp++)
+    for (NSUInteger disp = 1; disp <= numDisplays - 1; disp++)
     {
       NSString* const dispName = screenNameForDisplay(disp);
       outputs.push_back(dispName.UTF8String);
