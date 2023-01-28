@@ -404,9 +404,8 @@ void CActiveAEStream::Drain(bool wait)
   m_streamDrained = false;
 
   Message *reply;
-  if (m_streamPort->SendOutMessageSync(CActiveAEDataProtocol::DRAINSTREAM,
-                                       &reply,2000,
-                                       &stream, sizeof(CActiveAEStream*)))
+  if (m_streamPort->SendOutMessageSync(CActiveAEDataProtocol::DRAINSTREAM, &reply, 2s, &stream,
+                                       sizeof(CActiveAEStream*)))
   {
     bool success = reply->signal == CActiveAEDataProtocol::ACC ? true : false;
     reply->Release();
@@ -593,11 +592,11 @@ void CActiveAEStream::RegisterSlave(IAEStream *slave)
 CActiveAEStreamBuffers::CActiveAEStreamBuffers(const AEAudioFormat& inputFormat,
                                                const AEAudioFormat& outputFormat,
                                                AEQuality quality)
-  : m_inputFormat(inputFormat)
+  : m_inputFormat(inputFormat),
+    m_resampleBuffers(
+        std::make_unique<CActiveAEBufferPoolResample>(inputFormat, outputFormat, quality)),
+    m_atempoBuffers(std::make_unique<CActiveAEBufferPoolAtempo>(outputFormat))
 {
-  m_resampleBuffers =
-      std::make_unique<CActiveAEBufferPoolResample>(inputFormat, outputFormat, quality);
-  m_atempoBuffers = std::make_unique<CActiveAEBufferPoolAtempo>(outputFormat);
 }
 
 CActiveAEStreamBuffers::~CActiveAEStreamBuffers()
