@@ -45,6 +45,8 @@ constexpr Color BLUE = 0xFF0000FF;
 constexpr Color NAVY = 0xFF000080;
 constexpr Color FUCHSIA = 0xFFFF00FF;
 constexpr Color PURPLE = 0xFF800080;
+constexpr Color MAGENTA = 0xFFFF00FF;
+constexpr Color CYAN = 0xFF00FFFF;
 
 struct ColorInfo
 {
@@ -161,7 +163,7 @@ ColorFloats ConvertToFloats(const Color argb);
  * \param color The original color
  * \return The original color converted to hex RGB
  */
-std::string ConvertoToHexRGB(const Color argb);
+std::string ConvertToHexRGB(const Color argb);
 
 } // namespace COLOR
 } // namespace UTILS
