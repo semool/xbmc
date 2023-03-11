@@ -83,6 +83,7 @@ bool CDVDAudioCodecFFmpeg::Open(CDVDStreamInfo &hints, CDVDCodecOptions &options
   av_channel_layout_uninit(&m_pCodecContext->ch_layout);
   m_pCodecContext->ch_layout.order = AV_CHANNEL_ORDER_NATIVE;
   m_pCodecContext->ch_layout.nb_channels = hints.channels;
+  m_pCodecContext->ch_layout.u.mask = hints.channellayout;
   m_hint_layout = hints.channellayout;
   m_pCodecContext->sample_rate = hints.samplerate;
   m_pCodecContext->block_align = hints.blockalign;
