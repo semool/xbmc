@@ -369,6 +369,7 @@ bool CDVDVideoCodecFFmpeg::Open(CDVDStreamInfo &hints, CDVDCodecOptions &options
   m_pCodecContext->workaround_bugs = FF_BUG_AUTODETECT;
   m_pCodecContext->get_format = GetFormat;
   m_pCodecContext->codec_tag = hints.codec_tag;
+  m_pCodecContext->flags = AV_CODEC_FLAG_COPY_OPAQUE;
 
   // setup threading model
   if (!(hints.codecOptions & CODEC_FORCE_SOFTWARE))
@@ -545,19 +546,6 @@ void CDVDVideoCodecFFmpeg::UpdateName()
   CLog::Log(LOGDEBUG, "CDVDVideoCodecFFmpeg - Updated codec: {}", m_name);
 }
 
-union pts_union
-{
-  double  pts_d;
-  int64_t pts_i;
-};
-
-static int64_t pts_dtoi(double pts)
-{
-  pts_union u;
-  u.pts_d = pts;
-  return u.pts_i;
-}
-
 bool CDVDVideoCodecFFmpeg::AddData(const DemuxPacket &packet)
 {
   if (!m_pCodecContext)
@@ -575,7 +563,6 @@ bool CDVDVideoCodecFFmpeg::AddData(const DemuxPacket &packet)
     m_started = true;
 
   m_dts = packet.dts;
-  m_pCodecContext->reordered_opaque = pts_dtoi(packet.pts);
 
   AVPacket* avpkt = av_packet_alloc();
   if (!avpkt)
