@@ -294,7 +294,8 @@ AVFrame* CFFmpegImage::ExtractFrame()
     return nullptr;
   }
   //we need milliseconds
-  frame->pkt_duration = av_rescale_q(frame->pkt_duration, m_fctx->streams[0]->time_base, AVRational{ 1, 1000 });
+  frame->duration =
+      av_rescale_q(frame->duration, m_fctx->streams[0]->time_base, AVRational{1, 1000});
   m_height = frame->height;
   m_width = frame->width;
   m_originalWidth = m_width;
@@ -745,7 +746,7 @@ std::shared_ptr<Frame> CFFmpegImage::ReadFrame()
   if (avframe == nullptr)
     return nullptr;
   std::shared_ptr<Frame> frame(new Frame());
-  frame->m_delay = (unsigned int)avframe->pkt_duration;
+  frame->m_delay = (unsigned int)avframe->duration;
   frame->m_pitch = avframe->width * 4;
   frame->m_pImage = (unsigned char*) av_malloc(avframe->height * frame->m_pitch);
   DecodeFrame(avframe, avframe->width, avframe->height, frame->m_pitch, frame->m_pImage);
