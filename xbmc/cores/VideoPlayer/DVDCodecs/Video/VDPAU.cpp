@@ -1045,7 +1045,6 @@ int CDecoder::FFGetBuffer(AVCodecContext *avctx, AVFrame *pic, int flags)
   }
   pic->buf[0] = buffer;
 
-  pic->reordered_opaque= avctx->reordered_opaque;
   return 0;
 }
 
