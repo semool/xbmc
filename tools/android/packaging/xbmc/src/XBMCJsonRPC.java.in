@@ -7,7 +7,6 @@ import java.util.HashSet;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 
 import android.app.Notification;
@@ -159,10 +158,7 @@ public class XBMCJsonRPC
       if (stringResp == null)
         return null;
 
-      JsonParser parser = new JsonParser();
-      JsonElement element = parser.parse(stringResp);
-      JsonObject resp = element.getAsJsonObject();
-      return resp;
+      return JsonParser.parseString(stringResp).getAsJsonObject();
     }
     catch (Exception e)
     {
@@ -180,10 +176,7 @@ public class XBMCJsonRPC
       if (stringResp == null)
         return null;
 
-      JsonParser parser = new JsonParser();
-      JsonElement element = parser.parse(stringResp);
-      JsonArray resp = element.getAsJsonArray();
-      return resp;
+      return JsonParser.parseString(stringResp).getAsJsonArray();
     }
     catch (Exception e)
     {
