@@ -179,7 +179,8 @@ public:
   static constexpr auto SETTING_SCRAPERS_MUSICVIDEOSDEFAULT = "scrapers.musicvideosdefault";
   static constexpr auto SETTING_PVRMANAGER_PRESELECTPLAYINGCHANNEL =
       "pvrmanager.preselectplayingchannel";
-  static constexpr auto SETTING_PVRMANAGER_SYNCCHANNELGROUPS = "pvrmanager.syncchannelgroups";
+  static constexpr auto SETTING_PVRMANAGER_BACKENDCHANNELGROUPSORDER =
+      "pvrmanager.backendchannelgroupsorder";
   static constexpr auto SETTING_PVRMANAGER_BACKENDCHANNELORDER = "pvrmanager.backendchannelorder";
   static constexpr auto SETTING_PVRMANAGER_USEBACKENDCHANNELNUMBERS =
       "pvrmanager.usebackendchannelnumbers";
@@ -472,6 +473,13 @@ public:
   static const int MUSICLIBRARY_ARTWORK_LEVEL_BASIC = 1;
   static const int MUSICLIBRARY_ARTWORK_LEVEL_CUSTOM = 2;
   static const int MUSICLIBRARY_ARTWORK_LEVEL_NONE = 3;
+
+  // values for SETTING_VIDEOPLAYER_AUTOPLAYNEXTITEM
+  static constexpr int SETTING_AUTOPLAYNEXT_MUSICVIDEOS = 0;
+  static constexpr int SETTING_AUTOPLAYNEXT_TVSHOWS = 1;
+  static constexpr int SETTING_AUTOPLAYNEXT_EPISODES = 2;
+  static constexpr int SETTING_AUTOPLAYNEXT_MOVIES = 3;
+  static constexpr int SETTING_AUTOPLAYNEXT_UNCATEGORIZED = 4;
 
   /*!
    \brief Creates a new settings wrapper around a new settings manager.
