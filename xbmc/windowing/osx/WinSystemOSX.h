@@ -47,7 +47,6 @@ public:
   bool ResizeWindow(int newWidth, int newHeight, int newLeft, int newTop) override;
   bool SetFullScreen(bool fullScreen, RESOLUTION_INFO& res, bool blankOtherDisplays) override;
   void UpdateResolutions() override;
-  void ShowOSMouse(bool show) override;
   bool Minimize() override;
   bool Restore() override;
   bool Hide() override;
@@ -56,8 +55,21 @@ public:
 
   std::string GetClipboardText() override;
 
+  /*! \brief Check if the windowing system supports moving windows across screens
+   *  \return true if the windowing system supports moving windows across screens, false otherwise
+  */
+  bool SupportsScreenMove() override;
+
+  /**
+   * \brief Used to signal the windowing system about the intention of the user to change the main display
+   * \details triggered, for example, when the user manually changes the monitor setting
+  */
+  void NotifyScreenChangeIntention() override;
+
   void Register(IDispResource* resource) override;
   void Unregister(IDispResource* resource) override;
+
+  void ToggleFloatOnTop() override;
 
   std::unique_ptr<CVideoSync> GetVideoSync(void* clock) override;
 
@@ -83,6 +95,9 @@ public:
   NSRect GetWindowDimensions();
   void enableInputEvents();
   void disableInputEvents();
+
+  void signalMouseEntered();
+  void signalMouseExited();
 
 protected:
   std::unique_ptr<KODI::WINDOWING::IOSScreenSaver> GetOSScreenSaverImpl() override;

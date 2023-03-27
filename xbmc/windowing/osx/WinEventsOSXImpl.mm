@@ -36,6 +36,15 @@
   std::queue<XBMC_Event> events;
   CCriticalSection m_inputlock;
   id mLocalMonitorId;
+
+  //! macOS requires the calls the NSCursor hide/unhide to be balanced
+  enum class NSCursorVisibilityBalancer
+  {
+    NONE,
+    HIDE,
+    UNHIDE
+  };
+  NSCursorVisibilityBalancer m_lastAppCursorVisibilityAction;
 }
 
 #pragma mark - init
@@ -45,6 +54,7 @@
   self = [super init];
 
   [self enableInputEvents];
+  m_lastAppCursorVisibilityAction = NSCursorVisibilityBalancer::NONE;
 
   return self;
 }
@@ -128,6 +138,12 @@
   // left command
   if (appleModifier & kCGEventFlagMaskCommand)
     xbmcModifier |= XBMCKMOD_LMETA;
+  // fn/globe
+  if (appleModifier & kCGEventFlagMaskSecondaryFn && !(appleModifier & kCGEventFlagMaskNumericPad))
+  {
+    xbmcModifier |= XBMCKMOD_LMETA;
+    xbmcModifier |= XBMCKMOD_MODE;
+  }
 
   return static_cast<XBMCMod>(xbmcModifier);
 }
@@ -135,6 +151,7 @@
 - (bool)ProcessOSXShortcuts:(XBMC_Event&)event
 {
   const auto cmd = (event.key.keysym.mod & (XBMCKMOD_LMETA | XBMCKMOD_RMETA)) != 0;
+  const auto isFn = (event.key.keysym.mod & XBMCKMOD_MODE) != 0;
   if (cmd && event.type == XBMC_KEYDOWN)
   {
     switch (event.key.keysym.sym)
@@ -146,6 +163,18 @@
 
       case XBMCK_CTRLF: // CMD-CTRL-f to toggle fullscreen
         CServiceBroker::GetAppMessenger()->PostMsg(TMSG_TOGGLEFULLSCREEN);
+        return true;
+
+      case XBMCK_f: // FN/Globe-f to toggle fullscreen
+        if (isFn) // avoid cmd-f to toggle fullscreen
+        {
+          CServiceBroker::GetAppMessenger()->PostMsg(TMSG_TOGGLEFULLSCREEN);
+          return true;
+        }
+        break;
+
+      case XBMCK_t: // CMD-t to toggle float on top
+        CServiceBroker::GetAppMessenger()->PostMsg(TMSG_TOGGLEFLOATONTOP);
         return true;
 
       case XBMCK_s: // CMD-s to take a screenshot
@@ -198,6 +227,24 @@
   if (mLocalMonitorId != nil)
     [NSEvent removeMonitor:mLocalMonitorId];
   mLocalMonitorId = nil;
+}
+
+- (void)signalMouseEntered
+{
+  if (m_lastAppCursorVisibilityAction != NSCursorVisibilityBalancer::HIDE)
+  {
+    m_lastAppCursorVisibilityAction = NSCursorVisibilityBalancer::HIDE;
+    [NSCursor hide];
+  }
+}
+
+- (void)signalMouseExited
+{
+  if (m_lastAppCursorVisibilityAction != NSCursorVisibilityBalancer::UNHIDE)
+  {
+    m_lastAppCursorVisibilityAction = NSCursorVisibilityBalancer::UNHIDE;
+    [NSCursor unhide];
+  }
 }
 
 - (NSEvent*)InputEventHandler:(NSEvent*)nsevent

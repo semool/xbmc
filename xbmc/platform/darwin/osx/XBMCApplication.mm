@@ -13,6 +13,7 @@
 #include "application/AppEnvironment.h"
 #include "application/AppInboundProtocol.h"
 #include "application/AppParamParser.h"
+#include "messaging/ApplicationMessenger.h"
 #include "platform/xbmc.h"
 #include "utils/log.h"
 
@@ -37,7 +38,7 @@ static NSMenu* setupWindowMenu()
   menuItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagControl;
   [windowMenu addItem:menuItem];
 
-  // "Full/Windowed Toggle" item
+  // "Float on top" item
   menuItem = [[NSMenuItem alloc] initWithTitle:@"Float on Top"
                                         action:@selector(floatOnTopToggle:)
                                  keyEquivalent:@"t"];
@@ -91,9 +92,11 @@ static NSMenu* setupWindowMenu()
   fullscreenMenuItem.keyEquivalentModifierMask =
       NSEventModifierFlagCommand | NSEventModifierFlagControl;
   [windowMenu addItem:fullscreenMenuItem];
-  [windowMenu addItemWithTitle:@"Float on Top"
-                        action:@selector(floatOnTopToggle:)
-                 keyEquivalent:@"t"];
+  NSMenuItem* floatOnTopMenuItem = [[NSMenuItem alloc] initWithTitle:@"Float on Top"
+                                                              action:@selector(floatOnTopToggle:)
+                                                       keyEquivalent:@"t"];
+  floatOnTopMenuItem.keyEquivalentModifierMask = NSEventModifierFlagCommand;
+  [windowMenu addItem:floatOnTopMenuItem];
   [windowMenu addItemWithTitle:@"Minimize"
                         action:@selector(performMiniaturize:)
                  keyEquivalent:@"m"];
@@ -264,22 +267,15 @@ static NSMenu* setupWindowMenu()
 
 - (void)fullScreenToggle:(id)sender
 {
+  CServiceBroker::GetAppMessenger()->PostMsg(TMSG_TOGGLEFULLSCREEN);
 }
 
 - (void)floatOnTopToggle:(id)sender
 {
-  // ToDo!: non functional, test further
-  NSWindow* window = NSOpenGLContext.currentContext.view.window;
-  if (window.level == NSFloatingWindowLevel)
-  {
-    [window setLevel:NSNormalWindowLevel];
-    [sender setState:NSControlStateValueOff];
-  }
-  else
-  {
-    [window setLevel:NSFloatingWindowLevel];
-    [sender setState:NSControlStateValueOn];
-  }
+  [sender setState:([NSApplication sharedApplication].mainWindow.level == NSNormalWindowLevel
+                        ? NSControlStateValueOn
+                        : NSControlStateValueOff)];
+  CServiceBroker::GetAppMessenger()->PostMsg(TMSG_TOGGLEFLOATONTOP);
 }
 
 - (NSMenu*)applicationDockMenu:(NSApplication*)sender

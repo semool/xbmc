@@ -42,6 +42,7 @@
 #include "platform/darwin/osx/CocoaInterface.h"
 #include "platform/darwin/osx/powermanagement/CocoaPowerSyscall.h"
 
+#include <array>
 #include <chrono>
 #include <cstdlib>
 #include <mutex>
@@ -68,7 +69,7 @@ constexpr const char* SETTING_WINDOW_TOP = "window.top";
 constexpr const char* SETTING_WINDOW_LEFT = "window.left";
 } // namespace
 
-static NSWindow* blankingWindows[MAX_DISPLAYS];
+static std::array<NSWindowController*, MAX_DISPLAYS> blankingWindowControllers;
 
 size_t DisplayBitsPerPixelForMode(CGDisplayModeRef mode)
 {
@@ -371,49 +372,51 @@ CGDisplayModeRef BestMatchForMode(CGDirectDisplayID display,
 
 #pragma mark - Blank Displays
 
-void BlankOtherDisplays(NSUInteger screen_index)
+void BlankOtherDisplays(NSUInteger screenBeingUsed)
 {
   const NSUInteger numDisplays = NSScreen.screens.count;
 
-  // zero out blankingWindows for debugging
-  for (NSUInteger i = 0; i < MAX_DISPLAYS; i++)
-  {
-    blankingWindows[i] = 0;
-  }
-
-  // Blank.
+  // Blank all other displays except the current one.
   for (NSUInteger i = 0; i < numDisplays; i++)
   {
-    if (i != screen_index)
+    if (i != screenBeingUsed)
     {
-      // Get the size.
+      // Get the size of the screen
       NSScreen* pScreen = [NSScreen.screens objectAtIndex:i];
       NSRect screenRect = pScreen.frame;
-
-      // Build a blanking window.
       screenRect.origin = NSZeroPoint;
-      blankingWindows[i] = [[NSWindow alloc] initWithContentRect:screenRect
-                                                       styleMask:NSWindowStyleMaskBorderless
-                                                         backing:NSBackingStoreBuffered
-                                                           defer:NO
-                                                          screen:pScreen];
 
-      [blankingWindows[i] setBackgroundColor:NSColor.blackColor];
-      [blankingWindows[i] setLevel:CGShieldingWindowLevel()];
-      [blankingWindows[i] makeKeyAndOrderFront:nil];
+      dispatch_sync(dispatch_get_main_queue(), ^{
+        // Build a blanking (black) window.
+        auto blankingWindow = [[NSWindow alloc] initWithContentRect:screenRect
+                                                          styleMask:NSWindowStyleMaskBorderless
+                                                            backing:NSBackingStoreBuffered
+                                                              defer:NO
+                                                             screen:pScreen];
+        [blankingWindow setBackgroundColor:NSColor.blackColor];
+        [blankingWindow setLevel:CGShieldingWindowLevel()];
+        [blankingWindow makeKeyAndOrderFront:nil];
+
+        // Create a controller and bind the blanking window to it
+        blankingWindowControllers[i] = [[NSWindowController alloc] init];
+        [blankingWindowControllers[i] setWindow:blankingWindow];
+      });
     }
   }
 }
 
-void UnblankDisplays(void)
+void UnblankDisplays(NSUInteger screenBeingUsed)
 {
-  for (auto i = 0; i < static_cast<int>(NSScreen.screens.count); i++)
+  for (NSUInteger i = 0; i < NSScreen.screens.count; i++)
   {
-    if (blankingWindows[i] != 0)
+    if (blankingWindowControllers[i] && i != screenBeingUsed)
     {
       // Get rid of the blanking windows we created.
-      [blankingWindows[i] close];
-      blankingWindows[i] = 0;
+      // Note after closing the window, setting the NSWindowController to nil will dealoc
+      dispatch_sync(dispatch_get_main_queue(), ^{
+        [[blankingWindowControllers[i] window] close];
+        blankingWindowControllers[i] = nil;
+      });
     }
   }
 }
@@ -600,7 +603,7 @@ bool CWinSystemOSX::DestroyWindowSystem()
     m_glView = nullptr;
   }
 
-  UnblankDisplays();
+  UnblankDisplays(m_lastDisplayNr);
   return true;
 }
 
@@ -630,6 +633,7 @@ bool CWinSystemOSX::CreateNewWindow(const std::string& name, bool fullScreen, RE
   [NSAnimationContext beginGrouping];
   [NSAnimationContext.currentContext setCompletionHandler:^{
     [appWindow makeKeyWindow];
+    [appWindow makeMainWindow];
   }];
 
   const NSUInteger windowStyleMask = NSWindowStyleMaskTitled | NSWindowStyleMaskResizable |
@@ -811,6 +815,25 @@ NSRect CWinSystemOSX::GetWindowDimensions()
   return frame;
 }
 
+#pragma mark - Window level
+
+void CWinSystemOSX::ToggleFloatOnTop()
+{
+  dispatch_sync(dispatch_get_main_queue(), ^{
+    if (!m_appWindow)
+      return;
+
+    if (m_appWindow.level == NSFloatingWindowLevel)
+    {
+      [m_appWindow setLevel:NSNormalWindowLevel];
+    }
+    else
+    {
+      [m_appWindow setLevel:NSFloatingWindowLevel];
+    }
+  });
+}
+
 #pragma mark - Resize Window
 
 bool CWinSystemOSX::ResizeWindow(int newWidth, int newHeight, int newLeft, int newTop)
@@ -896,6 +919,17 @@ bool CWinSystemOSX::SetFullScreen(bool fullScreen, RESOLUTION_INFO& res, bool bl
   {
     ResizeWindow(m_nWidth, m_nHeight, -1, -1);
     m_fullscreenWillToggle = false;
+
+    // Blank other displays if requested.
+    if (blankOtherDisplays)
+    {
+      BlankOtherDisplays(m_lastDisplayNr);
+    }
+    else
+    {
+      UnblankDisplays(m_lastDisplayNr);
+    }
+
     return true;
   }
 
@@ -947,8 +981,7 @@ bool CWinSystemOSX::SetFullScreen(bool fullScreen, RESOLUTION_INFO& res, bool bl
 
     // Unblank.
     // Force the unblank when returning from fullscreen, we get called with blankOtherDisplays set false.
-    //if (blankOtherDisplays)
-    UnblankDisplays();
+    UnblankDisplays(m_lastDisplayNr);
   }
 
   // toggle cocoa fullscreen mode
@@ -1181,6 +1214,35 @@ void CWinSystemOSX::WindowChangedScreen()
   }
 }
 
+void CWinSystemOSX::NotifyScreenChangeIntention()
+{
+  if (!SupportsScreenMove())
+  {
+    return;
+  }
+
+  // find the future displayId and the screen object
+  const NSUInteger dispIdx =
+      GetDisplayIndex(CServiceBroker::GetSettingsComponent()->GetSettings()->GetString(
+          CSettings::SETTING_VIDEOSCREEN_MONITOR));
+  NSScreen* screen = nil;
+  if (dispIdx < NSScreen.screens.count)
+  {
+    screen = [NSScreen.screens objectAtIndex:dispIdx];
+  }
+  // move the window to the center of the new screen
+  if (dispIdx != m_lastDisplayNr && screen)
+  {
+    NSPoint windowPos =
+        NSMakePoint(screen.frame.origin.x + screen.frame.size.width / 2 - m_nWidth / 2,
+                    screen.frame.origin.y + screen.frame.size.height / 2 - m_nHeight / 2);
+    dispatch_sync(dispatch_get_main_queue(), ^{
+      [m_appWindow setFrameOrigin:windowPos];
+    });
+    m_lastDisplayNr = dispIdx;
+  }
+}
+
 CGLContextObj CWinSystemOSX::GetCGLContextObj()
 {
   __block CGLContextObj cglcontex = nullptr;
@@ -1279,7 +1341,18 @@ std::string CWinSystemOSX::GetClipboardText()
   return utf8_text;
 }
 
-void CWinSystemOSX::ShowOSMouse(bool show)
+void CWinSystemOSX::signalMouseEntered()
 {
-  // do nothing (this is already handled by OSXGLView on mouseEntered and mouseExited)
+  m_winEvents->signalMouseEntered();
+}
+
+void CWinSystemOSX::signalMouseExited()
+{
+  m_winEvents->signalMouseExited();
+}
+
+bool CWinSystemOSX::SupportsScreenMove()
+{
+  // macOS doesn't allow programatically moving windows across screens if the window is fullscreen
+  return !m_bFullScreen;
 }
