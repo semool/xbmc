@@ -211,7 +211,6 @@ bool CDVDVideoCodecStarfish::OpenInternal(CDVDStreamInfo& hints, CDVDCodecOption
   payloadArg["option"]["transmission"]["contentsType"] = "LIVE"; // "LIVE", "WebRTC"
   payloadArg["option"]["needAudio"] = false;
   payloadArg["option"]["seekMode"] = "late_Iframe";
-  payloadArg["option"]["lowDelayMode"] = true;
 
   payloadArgs["args"] = CVariant(CVariant::VariantTypeArray);
   payloadArgs["args"].push_back(std::move(payloadArg));
@@ -275,7 +274,7 @@ bool CDVDVideoCodecStarfish::AddData(const DemuxPacket& packet)
   auto pts = std::chrono::duration_cast<std::chrono::nanoseconds>(
       std::chrono::duration<double, std::ratio<1, DVD_TIME_BASE>>(packet.pts));
   auto dts = std::chrono::duration_cast<std::chrono::nanoseconds>(
-      std::chrono::duration<double, std::ratio<1, DVD_TIME_BASE>>(packet.pts));
+      std::chrono::duration<double, std::ratio<1, DVD_TIME_BASE>>(packet.dts));
 
   CLog::LogFC(LOGDEBUG, LOGVIDEO,
               "CDVDVideoCodecStarfish: dts:{} ns pts:{} ns sz:{} current state {}", dts.count(),
