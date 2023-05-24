@@ -21,6 +21,7 @@ set(SOURCES android_main.cpp
             JNIXBMCDisplayManagerDisplayListener.cpp
             JNIXBMCSpeechRecognitionListener.cpp
             JNIXBMCConnectivityManagerNetworkCallback.cpp
+            JNIXBMCBroadcastReceiver.cpp
             ${NDKROOT}/sources/android/native_app_glue/android_native_app_glue.c
             ${NDKROOT}/sources/android/cpufeatures/cpu-features.c)
 
@@ -47,6 +48,7 @@ set(HEADERS AndroidFeatures.h
             JNIXBMCDisplayManagerDisplayListener.h
             JNIXBMCSpeechRecognitionListener.h
             JNIXBMCConnectivityManagerNetworkCallback.h
+            JNIXBMCBroadcastReceiver.h
             XBMCApp.h)
 
 core_add_library(platform_android_activity)
