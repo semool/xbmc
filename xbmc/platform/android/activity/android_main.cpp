@@ -33,6 +33,8 @@
 
 #include <unistd.h>
 
+using namespace jni;
+
 namespace
 {
 
@@ -114,22 +116,21 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved)
 
   CJNIMainActivity::RegisterNatives(env);
   CJNIXBMCAudioManagerOnAudioFocusChangeListener::RegisterNatives(env);
-  CJNIXBMCSurfaceTextureOnFrameAvailableListener::RegisterNatives(env);
-  CJNIXBMCMainView::RegisterNatives(env);
-  CJNIXBMCVideoView::RegisterNatives(env);
+  CJNIXBMCBroadcastReceiver::RegisterNatives(env);
+  CJNIXBMCConnectivityManagerNetworkCallback::RegisterNatives(env);
   CJNIXBMCDisplayManagerDisplayListener::RegisterNatives(env);
-
-  jni::CJNIXBMCNsdManagerDiscoveryListener::RegisterNatives(env);
-  jni::CJNIXBMCNsdManagerRegistrationListener::RegisterNatives(env);
-  jni::CJNIXBMCNsdManagerResolveListener::RegisterNatives(env);
-  jni::CJNIXBMCMediaSession::RegisterNatives(env);
-  jni::CJNIXBMCJsonHandler::RegisterNatives(env);
-  jni::CJNIXBMCFile::RegisterNatives(env);
-  jni::CJNIXBMCTextureCache::RegisterNatives(env);
-  jni::CJNIXBMCURIUtils::RegisterNatives(env);
-  jni::CJNIXBMCSpeechRecognitionListener::RegisterNatives(env);
-  jni::CJNIXBMCConnectivityManagerNetworkCallback::RegisterNatives(env);
-  jni::CJNIXBMCBroadcastReceiver::RegisterNatives(env);
+  CJNIXBMCFile::RegisterNatives(env);
+  CJNIXBMCTextureCache::RegisterNatives(env);
+  CJNIXBMCJsonHandler::RegisterNatives(env);
+  CJNIXBMCMainView::RegisterNatives(env);
+  CJNIXBMCMediaSession::RegisterNatives(env);
+  CJNIXBMCNsdManagerDiscoveryListener::RegisterNatives(env);
+  CJNIXBMCNsdManagerRegistrationListener::RegisterNatives(env);
+  CJNIXBMCNsdManagerResolveListener::RegisterNatives(env);
+  CJNIXBMCSpeechRecognitionListener::RegisterNatives(env);
+  CJNIXBMCSurfaceTextureOnFrameAvailableListener::RegisterNatives(env);
+  CJNIXBMCURIUtils::RegisterNatives(env);
+  CJNIXBMCVideoView::RegisterNatives(env);
 
   return version;
 }
