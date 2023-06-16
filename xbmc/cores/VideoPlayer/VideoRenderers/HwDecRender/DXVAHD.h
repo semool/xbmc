@@ -85,7 +85,7 @@ public:
 
   bool PreInit() const;
   void UnInit();
-  bool Open(UINT width, UINT height);
+  bool Open(UINT width, UINT height, const VideoPicture& picture);
   void Close();
   bool Render(CRect src, CRect dst, ID3D11Resource* target, CRenderBuffer **views, DWORD flags, UINT frameIdx, UINT rotation, float contrast, float brightness);
   uint8_t PastRefs() const { return m_max_back_refs; }
@@ -123,6 +123,7 @@ public:
   static bool IsPQ10PassthroughSupported(const DXGI_FORMAT dxgi_format);
   static bool IsSuperResolutionSuitable(const VideoPicture& picture);
   void TryEnableVideoSuperResolution();
+  bool IsVideoSuperResolutionEnabled() const { return m_superResolutionEnabled; }
 
 protected:
   bool ReInit();
@@ -172,6 +173,7 @@ protected:
   bool m_bSupportHLG = false;
   bool m_HDR10Left{false};
   bool m_BT2020Left{false};
+  bool m_hasMetadataHDR10Support{false};
 
   struct ProcAmpInfo
   {
@@ -184,6 +186,9 @@ protected:
   Microsoft::WRL::ComPtr<ID3D11VideoProcessorEnumerator> m_pEnumerator;
   Microsoft::WRL::ComPtr<ID3D11VideoProcessorEnumerator1> m_pEnumerator1;
   Microsoft::WRL::ComPtr<ID3D11VideoProcessor> m_pVideoProcessor;
+
+  AVColorPrimaries m_color_primaries{AVCOL_PRI_UNSPECIFIED};
+  AVColorTransferCharacteristic m_color_transfer{AVCOL_TRC_UNSPECIFIED};
 
   bool m_forced8bit{false};
   bool m_superResolutionEnabled{false};
