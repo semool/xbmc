@@ -14,6 +14,7 @@
 #include "VideoRenderers/BaseRenderer.h"
 #include "VideoRenderers/RenderFlags.h"
 #include "cores/VideoPlayer/Buffers/VideoBuffer.h"
+#include "rendering/dx/DirectXHelper.h"
 #include "rendering/dx/RenderContext.h"
 #include "settings/Settings.h"
 #include "settings/SettingsComponent.h"
@@ -341,14 +342,8 @@ bool CRendererBase::CreateIntermediateTarget(unsigned width,
                                              bool dynamic,
                                              DXGI_FORMAT format)
 {
-  // No format specified by renderer or high precision disabled > mirror swap chain's backbuffer format
-  const auto settings = CServiceBroker::GetSettingsComponent()->GetSettings();
-
-  if (!settings)
-    return false;
-
-  if (format == DXGI_FORMAT_UNKNOWN ||
-      !settings->GetBool(CSettings::SETTING_VIDEOPLAYER_HIGHPRECISIONPROCESSING))
+  // No format specified by renderer
+  if (format == DXGI_FORMAT_UNKNOWN)
     format = DX::Windowing()->GetBackBuffer().GetFormat();
 
   // don't create new one if it exists with requested size and format
@@ -737,27 +732,10 @@ DEBUG_INFO_VIDEO CRendererBase::GetDebugInfo(int idx)
   if (m_outputShader)
     info.shader = m_outputShader->GetDebugInfo();
 
-  std::string itformat;
-  switch (m_IntermediateTarget.GetFormat())
-  {
-    case DXGI_FORMAT_B8G8R8A8_UNORM:
-      itformat = "BGRA8";
-      break;
-    case DXGI_FORMAT_R10G10B10A2_UNORM:
-      itformat = "RGBA10";
-      break;
-    case DXGI_FORMAT_R16G16B16A16_FLOAT:
-      itformat = "FP16";
-      break;
-    case DXGI_FORMAT_R32G32B32A32_FLOAT:
-      itformat = "FP32";
-      break;
-    default:
-      itformat = "unknown";
-  }
-
   info.render =
-      StringUtils::Format("Render method: {}, IT format: {}", m_renderMethodName, itformat);
+      StringUtils::Format("Render method: {}, IT: {}x{} {}", m_renderMethodName,
+                          m_IntermediateTarget.GetWidth(), m_IntermediateTarget.GetHeight(),
+                          DX::DXGIFormatToShortString(m_IntermediateTarget.GetFormat()));
 
   std::string rmInfo = GetRenderMethodDebugInfo();
   if (!rmInfo.empty())
