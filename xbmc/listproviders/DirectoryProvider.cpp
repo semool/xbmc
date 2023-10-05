@@ -38,7 +38,9 @@
 #include "utils/log.h"
 #include "video/VideoInfoTag.h"
 #include "video/VideoThumbLoader.h"
+#include "video/VideoUtils.h"
 #include "video/dialogs/GUIDialogVideoInfo.h"
+#include "video/guilib/VideoPlayActionProcessor.h"
 #include "video/guilib/VideoSelectActionProcessor.h"
 
 #include <memory>
@@ -467,6 +469,11 @@ bool ExecuteAction(const std::string& execute)
   return false;
 }
 
+bool ExecuteAction(const CExecString& execute)
+{
+  return ExecuteAction(execute.GetExecString());
+}
+
 class CVideoSelectActionProcessor : public VIDEO::GUILIB::CVideoSelectActionProcessorBase
 {
 public:
@@ -479,25 +486,25 @@ protected:
   bool OnPlayPartSelected(unsigned int part) override
   {
     // part numbers are 1-based
-    BuildAndExecAction("PlayMedia", StringUtils::Format("playoffset={}", part - 1));
+    ExecuteAction({"PlayMedia", m_item, StringUtils::Format("playoffset={}", part - 1)});
     return true;
   }
 
   bool OnResumeSelected() override
   {
-    BuildAndExecAction("PlayMedia", "resume");
+    ExecuteAction({"PlayMedia", m_item, "resume"});
     return true;
   }
 
   bool OnPlaySelected() override
   {
-    BuildAndExecAction("PlayMedia", "noresume");
+    ExecuteAction({"PlayMedia", m_item, "noresume"});
     return true;
   }
 
   bool OnQueueSelected() override
   {
-    BuildAndExecAction("QueueMedia", "");
+    ExecuteAction({"QueueMedia", m_item, ""});
     return true;
   }
 
@@ -514,68 +521,106 @@ protected:
   }
 
 private:
-  void BuildAndExecAction(const std::string& method, const std::string& param)
-  {
-    std::vector<std::string> params{StringUtils::Paramify(m_item.GetPath())};
-    if (!param.empty())
-      params.emplace_back(param);
+  CDirectoryProvider& m_provider;
+};
 
-    const CExecString es{method, params};
-    ExecuteAction(es.GetExecString());
+class CVideoPlayActionProcessor : public VIDEO::GUILIB::CVideoPlayActionProcessorBase
+{
+public:
+  explicit CVideoPlayActionProcessor(CFileItem& item) : CVideoPlayActionProcessorBase(item) {}
+
+protected:
+  bool OnResumeSelected() override
+  {
+    ExecuteAction({"PlayMedia", m_item, "resume"});
+    return true;
   }
 
-  CDirectoryProvider& m_provider;
+  bool OnPlaySelected() override
+  {
+    ExecuteAction({"PlayMedia", m_item, "noresume"});
+    return true;
+  }
 };
 } // namespace
 
 bool CDirectoryProvider::OnClick(const CGUIListItemPtr& item)
 {
-  CFileItem fileItem(*std::static_pointer_cast<CFileItem>(item));
-  if (fileItem.HasVideoInfoTag())
+  CFileItem targetItem{*std::static_pointer_cast<CFileItem>(item)};
+
+  bool isPlayMedia{false};
+
+  if (targetItem.IsFavourite())
   {
-    CVideoSelectActionProcessor proc{*this, fileItem};
+    // Resolve the favourite
+    const CFavouritesURL url{targetItem.GetPath()};
+    if (!url.IsValid())
+      return false;
+
+    targetItem = {url.GetTarget(), url.IsDir()};
+    targetItem.LoadDetails();
+
+    isPlayMedia = (url.GetAction() == CFavouritesURL::Action::PLAY_MEDIA);
+  }
+  else
+  {
+    const CExecString exec{targetItem, GetTarget(targetItem)};
+    isPlayMedia = (exec.GetFunction() == "playmedia");
+  }
+
+  // video select action setting is for files only, except exec func is playmedia...
+  if (targetItem.HasVideoInfoTag() && (!targetItem.m_bIsFolder || isPlayMedia))
+  {
+    CVideoSelectActionProcessor proc{*this, targetItem};
     if (proc.Process())
       return true;
   }
 
+  // exec the execute string for the original (!) item
+  CFileItem fileItem{*std::static_pointer_cast<CFileItem>(item)};
+
   if (fileItem.HasProperty("node.target_url"))
     fileItem.SetPath(fileItem.GetProperty("node.target_url").asString());
 
-  // grab and execute the execute string
-  return ExecuteAction(CExecString(fileItem, GetTarget(fileItem)).GetExecString());
+  return ExecuteAction({fileItem, GetTarget(fileItem)});
 }
 
 bool CDirectoryProvider::OnPlay(const CGUIListItemPtr& item)
 {
-  CFileItem fileItem(*std::static_pointer_cast<CFileItem>(item));
+  CFileItem targetItem{*std::static_pointer_cast<CFileItem>(item)};
 
-  if (fileItem.IsFavourite())
+  if (targetItem.IsFavourite())
   {
     // Resolve the favourite
-    const CFavouritesURL url(fileItem.GetPath());
-    if (url.IsValid())
-    {
-      // If action is playmedia, just play it
-      if (url.GetAction() == CFavouritesURL::Action::PLAY_MEDIA)
-        return ExecuteAction(url.GetExecString());
+    const CFavouritesURL url(targetItem.GetPath());
+    if (!url.IsValid())
+      return false;
 
-      CFileItem targetItem(url.GetTarget(), url.IsDir());
-      fileItem = targetItem;
-    }
+    targetItem = {url.GetTarget(), url.IsDir()};
+    targetItem.LoadDetails();
   }
 
-  if (CPlayerUtils::IsItemPlayable(fileItem))
+  // video play action setting is for files and folders...
+  if (targetItem.HasVideoInfoTag() ||
+      (targetItem.m_bIsFolder && VIDEO_UTILS::IsItemPlayable(targetItem)))
   {
-    CExecString exec(fileItem, {});
+    CVideoPlayActionProcessor proc{targetItem};
+    if (proc.Process())
+      return true;
+  }
+
+  if (CPlayerUtils::IsItemPlayable(targetItem))
+  {
+    const CExecString exec{targetItem, GetTarget(targetItem)};
     if (exec.GetFunction() == "playmedia")
     {
-      return ExecuteAction(exec.GetExecString());
+      // exec as is
+      return ExecuteAction(exec);
     }
     else
     {
-      // build and execute a playmedia execute string
-      exec = CExecString("PlayMedia", {StringUtils::Paramify(fileItem.GetPath())});
-      return ExecuteAction(exec.GetExecString());
+      // build a playmedia execute string for given target and exec this
+      return ExecuteAction({"PlayMedia", targetItem, ""});
     }
   }
   return true;
