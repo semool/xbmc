@@ -3738,7 +3738,10 @@ bool CFileItem::LoadDetails()
     }
 
     if (ret)
+    {
       m_videoInfoTag = tag.release();
+      m_strDynPath = m_videoInfoTag->m_strFileNameAndPath;
+    }
 
     return ret;
   }
@@ -3784,10 +3787,63 @@ bool CFileItem::LoadDetails()
     if (db.LoadVideoInfo(GetDynPath(), *tag))
     {
       m_videoInfoTag = tag.release();
+      m_strDynPath = m_videoInfoTag->m_strFileNameAndPath;
       return true;
     }
 
     CLog::LogF(LOGERROR, "Error filling item details (path={})", GetPath());
+    return false;
+  }
+
+  if (IsAudio())
+  {
+    return LoadMusicTag();
+  }
+
+  if (IsMusicDb())
+  {
+    if (HasMusicInfoTag())
+      return true;
+
+    CMusicDatabase db;
+    if (!db.Open())
+    {
+      CLog::LogF(LOGERROR, "Error opening music database");
+      return false;
+    }
+
+    MUSICDATABASEDIRECTORY::CQueryParams params;
+    MUSICDATABASEDIRECTORY::CDirectoryNode::GetDatabaseInfo(GetPath(), params);
+
+    if (params.GetSongId() >= 0)
+    {
+      CSong song;
+      if (db.GetSong(params.GetSongId(), song))
+      {
+        GetMusicInfoTag()->SetSong(song);
+        return true;
+      }
+    }
+    else if (params.GetAlbumId() >= 0)
+    {
+      m_bIsFolder = true;
+      CAlbum album;
+      if (db.GetAlbum(params.GetAlbumId(), album, false))
+      {
+        GetMusicInfoTag()->SetAlbum(album);
+        return true;
+      }
+    }
+    else if (params.GetArtistId() >= 0)
+    {
+      m_bIsFolder = true;
+      CArtist artist;
+      if (db.GetArtist(params.GetArtistId(), artist, false))
+      {
+        GetMusicInfoTag()->SetArtist(artist);
+        return true;
+      }
+    }
     return false;
   }
 
