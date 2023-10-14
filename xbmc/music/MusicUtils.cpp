@@ -42,6 +42,8 @@
 #include "utils/log.h"
 #include "view/GUIViewState.h"
 
+#include <memory>
+
 using namespace MUSIC_INFO;
 using namespace XFILE;
 using namespace std::chrono_literals;
@@ -155,7 +157,7 @@ public:
     const auto appPlayer = components.GetComponent<CApplicationPlayer>();
     if (appPlayer->IsPlayingAudio() && g_application.CurrentFileItem().HasMusicInfoTag())
     {
-      CFileItemPtr songitem = CFileItemPtr(new CFileItem(g_application.CurrentFileItem()));
+      CFileItemPtr songitem = std::make_shared<CFileItem>(g_application.CurrentFileItem());
       if (HasSongExtraArtChanged(songitem, type, itemID, db))
         g_application.UpdateCurrentPlayArt();
     }
@@ -851,6 +853,19 @@ bool GetItemsForPlayList(const std::shared_ptr<CFileItem>& item, CFileItemList& 
                               true); // can be cancelled
 }
 
+namespace
+{
+bool IsNonExistingUserPartyModePlaylist(const CFileItem& item)
+{
+  if (!item.IsSmartPlayList())
+    return false;
+
+  const std::string path{item.GetPath()};
+  const auto profileManager{CServiceBroker::GetSettingsComponent()->GetProfileManager()};
+  return ((profileManager->GetUserDataItem("PartyMode.xsp") == path) && !CFileUtils::Exists(path));
+}
+} // unnamed namespace
+
 bool IsItemPlayable(const CFileItem& item)
 {
   // Exclude all parent folders
@@ -893,6 +908,9 @@ bool IsItemPlayable(const CFileItem& item)
       return false;
     }
   }
+
+  if (IsNonExistingUserPartyModePlaylist(item))
+    return false;
 
   if (item.m_bIsFolder &&
       (item.IsMusicDb() || StringUtils::StartsWithNoCase(item.GetPath(), "library://music/")))
