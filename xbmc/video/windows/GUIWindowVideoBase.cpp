@@ -55,8 +55,8 @@
 #include "video/VideoDbUrl.h"
 #include "video/VideoInfoScanner.h"
 #include "video/VideoLibraryQueue.h"
+#include "video/VideoManagerTypes.h"
 #include "video/VideoUtils.h"
-#include "video/VideoVersionTypes.h"
 #include "video/dialogs/GUIDialogVideoInfo.h"
 #include "video/guilib/VideoPlayActionProcessor.h"
 #include "video/guilib/VideoSelectActionProcessor.h"
@@ -1080,7 +1080,7 @@ bool CGUIWindowVideoBase::PlayItem(const std::shared_ptr<CFileItem>& pItem,
   else if (pItem->IsPlayList())
   {
     // load the playlist the old way
-    LoadPlayList(pItem->GetPath(), PLAYLIST::TYPE_VIDEO);
+    LoadPlayList(pItem->GetDynPath(), PLAYLIST::TYPE_VIDEO);
     return true;
   }
   else if (m_guiState.get() && m_guiState->AutoPlayNextItem() && !g_partyModeManager.IsEnabled())
@@ -1441,13 +1441,13 @@ void CGUIWindowVideoBase::UpdateVideoVersionItems()
   for (const auto& item : *m_vecItems)
   {
     if (item->m_bIsFolder || !item->HasVideoInfoTag() ||
-        item->GetVideoInfoTag()->m_idVideoVersion > 0)
+        item->GetVideoInfoTag()->GetAssetInfo().GetId() > 0)
       continue;
 
     MediaType type = item->GetVideoInfoTag()->m_type;
     if (type == MediaTypeMovie)
     {
-      if (item->GetVideoInfoTag()->m_hasVideoVersions)
+      if (item->GetVideoInfoTag()->HasVideoVersions())
       {
         CVideoDbUrl itemUrl;
         if (!itemUrl.FromString(
@@ -1456,7 +1456,7 @@ void CGUIWindowVideoBase::UpdateVideoVersionItems()
 
         itemUrl.AddOption("mediaid", item->GetVideoInfoTag()->m_iDbId);
 
-        item->GetVideoInfoTag()->m_idVideoVersion = VIDEO_VERSION_ID_ALL;
+        item->GetVideoInfoTag()->GetAssetInfo().SetId(VIDEO_VERSION_ID_ALL);
         item->SetPath(itemUrl.ToString());
         item->m_bIsFolder = true;
 
