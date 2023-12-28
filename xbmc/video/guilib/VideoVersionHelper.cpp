@@ -79,6 +79,17 @@ std::shared_ptr<const CFileItem> CVideoChooser::ChooseVideo()
   else
     m_videoExtras.Clear();
 
+  CFileItem defaultVideoVersion;
+  db.GetDefaultVideoVersion(m_item->GetVideoContentType(), m_item->GetVideoInfoTag()->m_iDbId,
+                            defaultVideoVersion);
+
+  // find default version item in list and select it
+  const int defaultDbId{defaultVideoVersion.GetVideoInfoTag()->m_iDbId};
+  for (const auto& item : m_videoVersions)
+  {
+    item->Select(item->GetVideoInfoTag()->m_iDbId == defaultDbId);
+  }
+
   VideoAssetType itemType{VideoAssetType::VERSION};
   while (true)
   {
@@ -169,7 +180,7 @@ std::shared_ptr<CFileItem> CVideoVersionHelper::ChooseMovieFromVideoVersions(
   std::shared_ptr<const CFileItem> videoVersion;
   if (item->HasVideoVersions())
   {
-    if (!item->GetProperty("force_choose_video_version").asBoolean(false))
+    if (!item->GetProperty("needs_resolved_video_version").asBoolean(false))
     {
       // select the specified video version
       if (item->GetVideoInfoTag()->GetAssetInfo().GetId() > 0)
@@ -200,8 +211,8 @@ std::shared_ptr<CFileItem> CVideoVersionHelper::ChooseMovieFromVideoVersions(
       }
     }
 
-    if (!videoVersion && (item->GetProperty("force_choose_video_version").asBoolean(false) ||
-                          !item->GetProperty("prohibit_choose_video_version").asBoolean(false)))
+    if (!videoVersion && (item->GetProperty("needs_resolved_video_version").asBoolean(false) ||
+                          !item->GetProperty("has_resolved_video_version").asBoolean(false)))
     {
       CVideoChooser chooser{item};
       chooser.EnableExtras(false);

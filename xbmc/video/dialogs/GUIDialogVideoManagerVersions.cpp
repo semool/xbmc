@@ -134,12 +134,7 @@ void CGUIDialogVideoManagerVersions::Remove()
   // default video version is not allowed
   if (m_database.IsDefaultVideoVersion(m_selectedVideoAsset->GetVideoInfoTag()->m_iDbId))
   {
-    CGUIDialogOK::ShowAndGetInput(
-        CVariant(40018),
-        StringUtils::Format(g_localizeStrings.Get(40019),
-                            m_selectedVideoAsset->GetVideoInfoTag()->GetAssetInfo().GetTitle(),
-                            CMediaTypes::GetLocalization(mediaType),
-                            m_videoAsset->GetVideoInfoTag()->GetTitle()));
+    CGUIDialogOK::ShowAndGetInput(CVariant{40018}, CVariant{40019});
     return;
   }
 
@@ -217,10 +212,8 @@ void CGUIDialogVideoManagerVersions::AddVideoVersion()
                       [idFile](const std::shared_ptr<CFileItem>& version)
                       { return version->GetVideoInfoTag()->m_iDbId == idFile; }))
       {
-        CGUIDialogOK::ShowAndGetInput(g_localizeStrings.Get(40014),
-                                      StringUtils::Format(g_localizeStrings.Get(40016),
-                                                          CMediaTypes::GetLocalization(mediaType),
-                                                          typeVideoVersion));
+        CGUIDialogOK::ShowAndGetInput(
+            CVariant{40014}, StringUtils::Format(g_localizeStrings.Get(40016), typeVideoVersion));
         return;
       }
 
@@ -232,10 +225,8 @@ void CGUIDialogVideoManagerVersions::AddVideoVersion()
         return;
 
       if (!CGUIDialogYesNo::ShowAndGetInput(
-              g_localizeStrings.Get(40014),
-              StringUtils::Format(g_localizeStrings.Get(40017),
-                                  CMediaTypes::GetLocalization(mediaType), videoTitle,
-                                  typeVideoVersion, CMediaTypes::GetLocalization(mediaType))))
+              CVariant{40014},
+              StringUtils::Format(g_localizeStrings.Get(40017), typeVideoVersion, videoTitle)))
       {
         return;
       }
@@ -247,10 +238,7 @@ void CGUIDialogVideoManagerVersions::AddVideoVersion()
 
         if (list.Size() > 1)
         {
-          CGUIDialogOK::ShowAndGetInput(
-              g_localizeStrings.Get(40014),
-              StringUtils::Format(g_localizeStrings.Get(40019), typeVideoVersion,
-                                  CMediaTypes::GetLocalization(mediaType), videoTitle));
+          CGUIDialogOK::ShowAndGetInput(CVariant{40014}, CVariant{40019});
           return;
         }
         else
@@ -277,7 +265,7 @@ void CGUIDialogVideoManagerVersions::AddVideoVersion()
                  CURL::GetRedacted(item.GetPath()));
     }
 
-    const int idNewVideoVersion{SelectVideoAsset(m_videoAsset)};
+    const int idNewVideoVersion{ChooseVideoAsset(m_videoAsset)};
     if (idNewVideoVersion != -1)
       m_database.AddPrimaryVideoVersion(itemType, dbId, idNewVideoVersion, item);
 
@@ -292,8 +280,7 @@ std::tuple<int, std::string> CGUIDialogVideoManagerVersions::NewVideoVersion()
   std::string typeVideoVersion;
 
   // prompt for the new video version
-  if (!CGUIKeyboardFactory::ShowAndGetInput(typeVideoVersion,
-                                            CVariant{g_localizeStrings.Get(40004)}, false))
+  if (!CGUIKeyboardFactory::ShowAndGetInput(typeVideoVersion, CVariant{40004}, false))
     return std::make_tuple(-1, "");
 
   CVideoDatabase videodb;
@@ -385,6 +372,52 @@ int CGUIDialogVideoManagerVersions::ManageVideoVersionContextMenu(
   return button;
 }
 
+bool CGUIDialogVideoManagerVersions::ChooseVideoAndConvertToVideoVersion(
+    CFileItemList& items,
+    VideoDbContentType itemType,
+    const std::string& mediaType,
+    int dbId,
+    CVideoDatabase& videoDb)
+{
+  // choose a video
+  CGUIDialogSelect* dialog{CServiceBroker::GetGUI()->GetWindowManager().GetWindow<CGUIDialogSelect>(
+      WINDOW_DIALOG_SELECT)};
+  if (!dialog)
+  {
+    CLog::LogF(LOGERROR, "Unable to get WINDOW_DIALOG_SELECT instance!");
+    return {};
+  }
+
+  // Load thumbs async
+  CVideoThumbLoader loader;
+  loader.Load(items);
+
+  dialog->Reset();
+  dialog->SetItems(items);
+  dialog->SetHeading(CVariant{40002});
+  dialog->SetUseDetails(true);
+  dialog->Open();
+
+  if (loader.IsLoading())
+    loader.StopThread();
+
+  if (!dialog->IsConfirmed())
+    return false;
+
+  const std::shared_ptr<CFileItem> selectedItem{dialog->GetSelectedFileItem()};
+  if (!selectedItem)
+    return false;
+
+  // choose a video version for the video
+  const int idVideoVersion{ChooseVideoAsset(selectedItem)};
+  if (idVideoVersion < 0)
+    return false;
+
+  videoDb.ConvertVideoToVersion(itemType, dbId, selectedItem->GetVideoInfoTag()->m_iDbId,
+                                idVideoVersion);
+  return true;
+}
+
 bool CGUIDialogVideoManagerVersions::ConvertVideoVersion(const std::shared_ptr<CFileItem>& item)
 {
   if (!item || !item->HasVideoInfoTag())
@@ -399,9 +432,7 @@ bool CGUIDialogVideoManagerVersions::ConvertVideoVersion(const std::shared_ptr<C
   // invalid operation warning
   if (item->GetVideoInfoTag()->HasVideoVersions())
   {
-    CGUIDialogOK::ShowAndGetInput(
-        CVariant{40005},
-        StringUtils::Format(g_localizeStrings.Get(40006), CMediaTypes::GetLocalization(mediaType)));
+    CGUIDialogOK::ShowAndGetInput(CVariant{40005}, CVariant{40006});
     return false;
   }
 
@@ -443,42 +474,12 @@ bool CGUIDialogVideoManagerVersions::ConvertVideoVersion(const std::shared_ptr<C
   }
 
   // decorate the items
-  CVideoThumbLoader loader;
   for (const auto& item : list)
   {
-    loader.LoadItem(item.get());
     item->SetLabel2(item->GetVideoInfoTag()->m_strFileNameAndPath);
   }
 
-  // choose the target video
-  CGUIDialogSelect* dialog{CServiceBroker::GetGUI()->GetWindowManager().GetWindow<CGUIDialogSelect>(
-      WINDOW_DIALOG_SELECT)};
-  if (!dialog)
-  {
-    CLog::LogF(LOGERROR, "Unable to get WINDOW_DIALOG_SELECT instance!");
-    return false;
-  }
-
-  dialog->Reset();
-  dialog->SetItems(list);
-  dialog->SetHeading(
-      StringUtils::Format(g_localizeStrings.Get(40002), CMediaTypes::GetLocalization(mediaType)));
-  dialog->SetUseDetails(true);
-  dialog->Open();
-
-  if (!dialog->IsConfirmed())
-    return false;
-
-  const std::shared_ptr<CFileItem> selectedItem{dialog->GetSelectedFileItem()};
-
-  // choose a video version
-  const int idVideoVersion{SelectVideoAsset(selectedItem)};
-  if (idVideoVersion < 0)
-    return false;
-
-  videodb.ConvertVideoToVersion(itemType, dbId, selectedItem->GetVideoInfoTag()->m_iDbId,
-                                idVideoVersion);
-  return true;
+  return ChooseVideoAndConvertToVideoVersion(list, itemType, mediaType, dbId, videodb);
 }
 
 bool CGUIDialogVideoManagerVersions::ProcessVideoVersion(VideoDbContentType itemType, int dbId)
@@ -509,10 +510,8 @@ bool CGUIDialogVideoManagerVersions::ProcessVideoVersion(VideoDbContentType item
   videodb.GetFilePathById(dbId, path, itemType);
 
   if (!CGUIDialogYesNo::ShowAndGetInput(
-          StringUtils::Format(g_localizeStrings.Get(40008),
-                              CMediaTypes::GetLocalization(mediaType)),
-          StringUtils::Format(g_localizeStrings.Get(40009), CMediaTypes::GetLocalization(mediaType),
-                              item.GetVideoInfoTag()->GetTitle(), path)))
+          CVariant{40008}, StringUtils::Format(g_localizeStrings.Get(40009),
+                                               item.GetVideoInfoTag()->GetTitle(), path)))
   {
     return false;
   }
@@ -527,39 +526,10 @@ bool CGUIDialogVideoManagerVersions::ProcessVideoVersion(VideoDbContentType item
   }
 
   // decorate the items
-  CVideoThumbLoader loader;
   for (const auto& item : list)
   {
-    loader.LoadItem(item.get());
     item->SetLabel2(item->GetVideoInfoTag()->m_strFileNameAndPath);
   }
 
-  CGUIDialogSelect* dialog{CServiceBroker::GetGUI()->GetWindowManager().GetWindow<CGUIDialogSelect>(
-      WINDOW_DIALOG_SELECT)};
-  if (!dialog)
-  {
-    CLog::LogF(LOGERROR, "Unable to get WINDOW_DIALOG_SELECT instance!");
-    return false;
-  }
-
-  dialog->Reset();
-  dialog->SetItems(list);
-  dialog->SetHeading(
-      StringUtils::Format(g_localizeStrings.Get(40002), CMediaTypes::GetLocalization(mediaType)));
-  dialog->SetUseDetails(true);
-  dialog->Open();
-
-  if (!dialog->IsConfirmed())
-    return false;
-
-  const std::shared_ptr<CFileItem> selectedItem{dialog->GetSelectedFileItem()};
-
-  // choose a video version
-  const int idVideoVersion{SelectVideoAsset(selectedItem)};
-  if (idVideoVersion < 0)
-    return false;
-
-  videodb.ConvertVideoToVersion(itemType, dbId, selectedItem->GetVideoInfoTag()->m_iDbId,
-                                idVideoVersion);
-  return true;
+  return ChooseVideoAndConvertToVideoVersion(list, itemType, mediaType, dbId, videodb);
 }
