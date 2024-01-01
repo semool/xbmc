@@ -16,6 +16,7 @@
 #include "dialogs/GUIDialogFileBrowser.h"
 #include "dialogs/GUIDialogOK.h"
 #include "dialogs/GUIDialogYesNo.h"
+#include "filesystem/Directory.h"
 #include "guilib/GUIComponent.h"
 #include "guilib/GUIWindowManager.h"
 #include "guilib/LocalizeStrings.h"
@@ -41,7 +42,7 @@ CGUIDialogVideoManagerExtras::CGUIDialogVideoManagerExtras()
 
 VideoAssetType CGUIDialogVideoManagerExtras::GetVideoAssetType()
 {
-  return VideoAssetType::EXTRAS;
+  return VideoAssetType::EXTRA;
 }
 
 bool CGUIDialogVideoManagerExtras::OnMessage(CGUIMessage& message)
@@ -94,7 +95,8 @@ void CGUIDialogVideoManagerExtras::AddVideoExtra()
   CServiceBroker::GetMediaManager().GetLocalDrives(sources);
   CServiceBroker::GetMediaManager().GetNetworkLocations(sources);
 
-  std::string path;
+  std::string path{GetLikelyExtrasPath()};
+
   if (CGUIDialogFileBrowser::ShowAndGetFile(
           sources, CServiceBroker::GetFileExtensionProvider().GetVideoExtensions(),
           g_localizeStrings.Get(40015), path))
@@ -155,8 +157,8 @@ void CGUIDialogVideoManagerExtras::AddVideoExtra()
     const std::string typeNewVideoVersion{
         CGUIDialogVideoManagerExtras::GenerateVideoExtra(URIUtils::GetFileName(path))};
 
-    const int idNewVideoVersion{
-        m_database.AddVideoVersionType(typeNewVideoVersion, VideoAssetTypeOwner::AUTO)};
+    const int idNewVideoVersion{m_database.AddVideoVersionType(
+        typeNewVideoVersion, VideoAssetTypeOwner::AUTO, VideoAssetType::EXTRA)};
 
     m_database.AddExtrasVideoVersion(itemType, dbId, idNewVideoVersion, item);
 
@@ -166,7 +168,7 @@ void CGUIDialogVideoManagerExtras::AddVideoExtra()
   }
 }
 
-void CGUIDialogVideoManagerExtras::ManageVideoExtra(const std::shared_ptr<CFileItem>& item)
+void CGUIDialogVideoManagerExtras::ManageVideoExtras(const std::shared_ptr<CFileItem>& item)
 {
   CGUIDialogVideoManagerExtras* dialog{
       CServiceBroker::GetGUI()->GetWindowManager().GetWindow<CGUIDialogVideoManagerExtras>(
@@ -206,4 +208,21 @@ std::string CGUIDialogVideoManagerExtras::GenerateVideoExtra(const std::string& 
 
   // trim the string
   return StringUtils::Trim(extrasVersion);
+}
+
+std::string CGUIDialogVideoManagerExtras::GetLikelyExtrasPath()
+{
+  std::string path{URIUtils::GetDirectory(m_videoAsset->GetDynPath())};
+  CFileItemList items;
+
+  if (!XFILE::CDirectory::GetDirectory(path, items, "", XFILE::DIR_FLAG_DEFAULTS))
+    return path;
+
+  for (const auto& item : items)
+  {
+    if (item->m_bIsFolder && item->IsVideoExtras())
+      return item->GetPath();
+  }
+
+  return path;
 }

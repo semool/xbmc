@@ -25,7 +25,7 @@ public:
 
   void SetVideoAsset(const std::shared_ptr<CFileItem>& item) override;
 
-  static void ManageVideoExtra(const std::shared_ptr<CFileItem>& item);
+  static void ManageVideoExtras(const std::shared_ptr<CFileItem>& item);
   static std::string GenerateVideoExtra(const std::string& extrasRoot,
                                         const std::string& extrasPath);
 
@@ -40,4 +40,9 @@ protected:
 private:
   void AddVideoExtra();
   static std::string GenerateVideoExtra(const std::string& extrasPath);
+  /*!
+   * \brief Return a likely location for extras related to the movie
+   * \return path of the location
+  */
+  std::string GetLikelyExtrasPath();
 };
