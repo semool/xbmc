@@ -362,7 +362,8 @@ PLT_MediaObject* CUPnPServer::Build(const std::shared_ptr<CFileItem>& item,
                     if (!db.Open() ) return NULL;
 
                     if (params.GetMovieId() >= 0 )
-                        db.GetMovieInfo((const char*)path, *item->GetVideoInfoTag(), params.GetMovieId());
+                      db.GetMovieInfo(static_cast<const char*>(path), *item->GetVideoInfoTag(),
+                                      params.GetMovieId(), params.GetVideoVersionId());
                     else if (params.GetMVideoId() >= 0 )
                         db.GetMusicVideoInfo((const char*)path, *item->GetVideoInfoTag(), params.GetMVideoId());
                     else if (params.GetEpisodeId() >= 0 )
@@ -1130,7 +1131,7 @@ CUPnPServer::OnUpdateObject(PLT_ActionReference&             action,
                             NPT_Map<NPT_String,NPT_String>&  new_vals,
                             const PLT_HttpRequestContext&    context)
 {
-    std::string path(CURL::Decode(object_id));
+    const std::string path = DecodeObjectId(CURL::Decode(object_id)).GetChars();
     CFileItem updated;
     updated.SetPath(path);
     m_logger->info("OnUpdateObject: {} from {}", path,
