@@ -41,7 +41,6 @@
 #include "video/VideoInfoScanner.h"
 #include "video/VideoLibraryQueue.h"
 #include "video/dialogs/GUIDialogVideoInfo.h"
-#include "video/dialogs/GUIDialogVideoManagerVersions.h"
 #include "view/GUIViewState.h"
 
 #include <utility>
@@ -501,17 +500,6 @@ bool CGUIWindowVideoNav::GetDirectory(const std::string &strDirectory, CFileItem
         newTag->SetSpecialSort(SortSpecialOnTop);
         items.Add(newTag);
       }
-      else if (items.GetContent() == "videoversions" &&
-               !items.Contains("newvideoversion://" + videoUrl.GetType()))
-      {
-        const auto newVideoVersion{
-            std::make_shared<CFileItem>("newvideoversion://" + videoUrl.GetType(), false)};
-        newVideoVersion->SetLabel(g_localizeStrings.Get(40004));
-        newVideoVersion->SetLabelPreformatted(true);
-        newVideoVersion->SetSpecialSort(SortSpecialOnTop);
-        newVideoVersion->SetProperty("IsPlayable", false);
-        items.Add(newVideoVersion);
-      }
     }
   }
   return bResult;
@@ -685,8 +673,7 @@ void CGUIWindowVideoNav::OnDeleteItem(const CFileItemPtr& pItem)
   if (!m_vecItems->IsVideoDb() && !pItem->IsVideoDb())
   {
     if (!pItem->IsPath("newsmartplaylist://video") && !pItem->IsPath("special://videoplaylists/") &&
-        !pItem->IsPath("sources://video/") && !URIUtils::IsProtocol(pItem->GetPath(), "newtag") &&
-        !URIUtils::IsProtocol(pItem->GetPath(), "newvideoversion"))
+        !pItem->IsPath("sources://video/") && !URIUtils::IsProtocol(pItem->GetPath(), "newtag"))
       CGUIWindowVideoBase::OnDeleteItem(pItem);
   }
   else if (StringUtils::StartsWithNoCase(pItem->GetPath(), "videodb://movies/sets/") &&
@@ -817,9 +804,7 @@ void CGUIWindowVideoNav::GetContextButtons(int itemNumber, CContextButtons &butt
              item->GetVideoInfoTag()->m_type == MediaTypeEpisode || // episodes
              item->GetVideoInfoTag()->m_type == MediaTypeMusicVideo || // musicvideos
              item->GetVideoInfoTag()->m_type == "tag" || // tags
-             item->GetVideoInfoTag()->m_type == MediaTypeVideoCollection || // sets
-             (item->GetVideoInfoTag()->m_type == MediaTypeVideoVersion &&
-              item->GetVideoInfoTag()->m_iFileId != -1))) // videoversions for a certain video
+             item->GetVideoInfoTag()->m_type == MediaTypeVideoCollection)) // sets
         {
           buttons.Add(CONTEXT_BUTTON_EDIT, 16106);
         }
@@ -899,10 +884,8 @@ bool CGUIWindowVideoNav::OnContextButton(int itemNumber, CONTEXT_BUTTON button)
   {
   case CONTEXT_BUTTON_EDIT:
     {
-      CONTEXT_BUTTON ret =
-          item->GetVideoInfoTag()->m_type == MediaTypeVideoVersion
-              ? (CONTEXT_BUTTON)CGUIDialogVideoManagerVersions::ManageVideoVersionContextMenu(item)
-              : (CONTEXT_BUTTON)CGUIDialogVideoInfo::ManageVideoItem(item);
+      const CONTEXT_BUTTON ret{
+          static_cast<CONTEXT_BUTTON>(CGUIDialogVideoInfo::ManageVideoItem(item))};
 
       if (ret != CONTEXT_BUTTON_CANCELLED)
       {
@@ -1046,20 +1029,6 @@ bool CGUIWindowVideoNav::OnClick(int iItem, const std::string &player)
         videodb.AddTagToItem(items[index]->GetVideoInfoTag()->m_iDbId, idTag, mediaType);
       }
     }
-
-    Refresh(true);
-    return true;
-  }
-  else if (StringUtils::StartsWithNoCase(item->GetPath(), "newvideoversion://"))
-  {
-    // dont allow update while scanning
-    if (CVideoLibraryQueue::GetInstance().IsScanningLibrary())
-    {
-      HELPERS::ShowOKDialogText(CVariant{257}, CVariant{14057});
-      return true;
-    }
-
-    CGUIDialogVideoManagerVersions::NewVideoVersion();
 
     Refresh(true);
     return true;

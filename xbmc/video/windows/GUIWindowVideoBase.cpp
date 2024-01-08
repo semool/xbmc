@@ -9,6 +9,7 @@
 #include "GUIWindowVideoBase.h"
 
 #include "Autorun.h"
+#include "ContextMenuManager.h"
 #include "GUIPassword.h"
 #include "GUIUserMessages.h"
 #include "PartyModeManager.h"
@@ -541,9 +542,7 @@ bool CGUIWindowVideoBase::OnSelect(int iItem)
   if (!item->m_bIsFolder && path != "add" &&
       !StringUtils::StartsWith(path, "newsmartplaylist://") &&
       !StringUtils::StartsWith(path, "newplaylist://") &&
-      !StringUtils::StartsWith(path, "newtag://") &&
-      !StringUtils::StartsWith(path, "newvideoversion://") &&
-      !StringUtils::StartsWith(path, "script://"))
+      !StringUtils::StartsWith(path, "newtag://") && !StringUtils::StartsWith(path, "script://"))
     return OnFileAction(iItem, CVideoSelectActionProcessorBase::GetDefaultSelectAction(), "");
 
   return CGUIMediaWindow::OnSelect(iItem);
@@ -568,7 +567,7 @@ public:
 protected:
   bool OnPlayPartSelected(unsigned int part) override
   {
-    return m_window.OnPlayStackPart(m_itemIndex, part);
+    return m_window.OnPlayStackPart(m_item, part);
   }
 
   bool OnResumeSelected() override
@@ -589,10 +588,14 @@ protected:
     return true;
   }
 
-  bool OnInfoSelected() override { return m_window.OnItemInfo(m_itemIndex); }
+  bool OnInfoSelected() override { return m_window.OnItemInfo(*m_item); }
 
   bool OnMoreSelected() override
   {
+    // window only shows the default version, so no window specific context menu items available
+    if (m_item->HasVideoVersions() && !m_item->GetVideoInfoTag()->IsDefaultVideoVersion())
+      return CONTEXTMENU::ShowFor(m_item, CContextMenuManager::MAIN);
+
     m_window.OnPopupMenu(m_itemIndex);
     return true;
   }
@@ -821,16 +824,13 @@ void CGUIWindowVideoBase::GetContextButtons(int itemNumber, CContextButtons &but
   CGUIMediaWindow::GetContextButtons(itemNumber, buttons);
 }
 
-bool CGUIWindowVideoBase::OnPlayStackPart(int itemIndex, unsigned int partNumber)
+bool CGUIWindowVideoBase::OnPlayStackPart(const std::shared_ptr<CFileItem>& item,
+                                          unsigned int partNumber)
 {
   // part numbers are 1-based.
   if (partNumber < 1)
     return false;
 
-  if (itemIndex < 0 || itemIndex >= m_vecItems->Size())
-    return false;
-
-  const std::shared_ptr<CFileItem> item = m_vecItems->Get(itemIndex);
   const std::string path = item->GetDynPath();
 
   if (!URIUtils::IsStack(path))
@@ -869,7 +869,7 @@ bool CGUIWindowVideoBase::OnPlayStackPart(int itemIndex, unsigned int partNumber
     }
   }
   // play the video
-  return OnClick(itemIndex);
+  return PlayItem(item, "");
 }
 
 bool CGUIWindowVideoBase::OnContextButton(int itemNumber, CONTEXT_BUTTON button)
