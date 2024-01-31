@@ -61,6 +61,7 @@
 #include "video/dialogs/GUIDialogVideoInfo.h"
 #include "video/guilib/VideoPlayActionProcessor.h"
 #include "video/guilib/VideoSelectActionProcessor.h"
+#include "video/guilib/VideoVersionHelper.h"
 #include "view/GUIViewState.h"
 
 #include <memory>
@@ -422,8 +423,9 @@ bool CGUIWindowVideoBase::ShowInfo(const CFileItemPtr& item2, const ScraperPtr& 
   bool needsRefresh = false;
   if (bHasInfo)
   {
-    if (!info || info->Content() == CONTENT_NONE) // disable refresh button
-      item->SetProperty("xxuniqueid", "xx" + movieDetails.GetUniqueID());
+    // @todo add support to refresh movie version information
+    if (!info || info->Content() == CONTENT_NONE || VIDEO::IsVideoAssetFile(*item))
+      item->SetProperty("xxuniqueid", "xx" + movieDetails.GetUniqueID()); // disable refresh button
     item->SetProperty("CheckAutoPlayNextItem", IsActive());
     *item->GetVideoInfoTag() = movieDetails;
     pDlgInfo->SetMovie(item.get());
@@ -1067,7 +1069,9 @@ void CGUIWindowVideoBase::LoadPlayList(const std::string& strPlayList,
 bool CGUIWindowVideoBase::PlayItem(const std::shared_ptr<CFileItem>& pItem,
                                    const std::string& player)
 {
-  if (pItem->m_bIsFolder && !pItem->IsPlugin())
+  //! @todo get rid of "videos with versions as folder" hack!
+  if (pItem->m_bIsFolder && !pItem->IsPlugin() &&
+      !(pItem->HasVideoInfoTag() && pItem->GetVideoInfoTag()->IsDefaultVideoVersion()))
   {
     // take a copy so we can alter the queue state
     const auto item{std::make_shared<CFileItem>(*pItem)};
@@ -1470,7 +1474,7 @@ void CGUIWindowVideoBase::UpdateVideoVersionItems()
       int videoVersionId{-1};
       if (item->GetVideoInfoTag()->HasVideoVersions())
       {
-        if (item->GetProperty("has_resolved_video_version").asBoolean(false))
+        if (item->GetProperty("has_resolved_video_asset").asBoolean(false))
         {
           // certain version of the movie
           videoVersionId = item->GetVideoInfoTag()->GetAssetInfo().GetId();
