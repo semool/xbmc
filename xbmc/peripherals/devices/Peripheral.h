@@ -240,11 +240,14 @@ public:
 
   // implementation of IKeyboardInputProvider
   void RegisterKeyboardHandler(KODI::KEYBOARD::IKeyboardInputHandler* handler,
-                               bool bPromiscuous) override;
+                               bool bPromiscuous,
+                               bool forceDefaultMap) override;
   void UnregisterKeyboardHandler(KODI::KEYBOARD::IKeyboardInputHandler* handler) override;
 
   // implementation of IMouseInputProvider
-  void RegisterMouseHandler(KODI::MOUSE::IMouseInputHandler* handler, bool bPromiscuous) override;
+  void RegisterMouseHandler(KODI::MOUSE::IMouseInputHandler* handler,
+                            bool bPromiscuous,
+                            bool forceDefaultMap) override;
   void UnregisterMouseHandler(KODI::MOUSE::IMouseInputHandler* handler) override;
 
   virtual void RegisterJoystickButtonMapper(KODI::JOYSTICK::IButtonMapper* mapper);
@@ -259,7 +262,7 @@ public:
    *
    * \return The time of last activation, or invalid if unknown/never active
    */
-  virtual CDateTime LastActive();
+  virtual CDateTime LastActive() const;
 
   /*!
    * \brief Get the controller profile that best represents this peripheral
