@@ -62,6 +62,7 @@ JsonRpcMethodMap CJSONServiceDescription::m_methodMaps[] = {
   { "Player.GetAudioDelay",                         CPlayerOperations::GetAudioDelay },
   { "Player.SetAudioDelay",                         CPlayerOperations::SetAudioDelay },
   { "Player.SetSpeed",                              CPlayerOperations::SetSpeed },
+  { "Player.SetTempo",                              CPlayerOperations::SetTempo },
   { "Player.Seek",                                  CPlayerOperations::Seek },
   { "Player.Move",                                  CPlayerOperations::Move },
   { "Player.Zoom",                                  CPlayerOperations::Zoom },
@@ -174,6 +175,7 @@ JsonRpcMethodMap CJSONServiceDescription::m_methodMaps[] = {
   { "GUI.SetFullscreen",                            CGUIOperations::SetFullscreen },
   { "GUI.SetStereoscopicMode",                      CGUIOperations::SetStereoscopicMode },
   { "GUI.GetStereoscopicModes",                     CGUIOperations::GetStereoscopicModes },
+  { "GUI.ActivateScreenSaver",                      CGUIOperations::ActivateScreenSaver},
 
 // PVR operations
   { "PVR.GetProperties",                            CPVROperations::GetProperties },

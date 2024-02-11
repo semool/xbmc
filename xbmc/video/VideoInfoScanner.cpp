@@ -986,6 +986,9 @@ namespace VIDEO
       if (it != m_pathsToScan.end())
         m_pathsToScan.erase(it);
 
+      if (HasNoMedia(item->GetPath()))
+        return true;
+
       std::string hash, dbHash;
       bool allowEmptyHash = false;
       if (item->IsPlugin())
@@ -1014,7 +1017,12 @@ namespace VIDEO
         if (!hash.empty())
           flags |= DIR_FLAG_NO_FILE_INFO;
 
-        CUtil::GetRecursiveListing(item->GetPath(), items, CServiceBroker::GetFileExtensionProvider().GetVideoExtensions(), flags);
+        // Listing that ignores files inside and below folders containing .nomedia files.
+        CDirectory::EnumerateDirectory(
+            item->GetPath(), [&items](const std::shared_ptr<CFileItem>& item) { items.Add(item); },
+            [this](const std::shared_ptr<CFileItem>& folder)
+            { return !HasNoMedia(folder->GetPath()); },
+            true, CServiceBroker::GetFileExtensionProvider().GetVideoExtensions(), flags);
 
         // fast hash failed - compute slow one
         if (hash.empty())
@@ -1070,42 +1078,42 @@ namespace VIDEO
 
     // since we're doing this now anyway, should other items be stacked?
     items.Sort(SortByPath, SortOrderAscending);
-    int x = 0;
-    while (x < items.Size())
+
+    // If found VIDEO_TS.IFO or INDEX.BDMV then we are dealing with Blu-ray or DVD files on disc
+    // somewhere in the directory tree. Assume that all other files/folders in the same folder
+    // with VIDEO_TS or BDMV can be ignored.
+    // THere can be a BACKUP/INDEX.BDMV which needs to be ignored (and broke the old while loop here)
+
+    // Get folders to remove
+    std::vector<std::string> foldersToRemove;
+    for (const auto& item : items)
     {
-      if (items[x]->m_bIsFolder)
-      {
-        x++;
-        continue;
-      }
-
-      std::string strPathX, strFileX;
-      URIUtils::Split(items[x]->GetPath(), strPathX, strFileX);
-      //CLog::Log(LOGDEBUG,"{}:{}:{}", x, strPathX, strFileX);
-
-      const int y = x + 1;
-      if (StringUtils::EqualsNoCase(strFileX, "VIDEO_TS.IFO"))
-      {
-        while (y < items.Size())
-        {
-          std::string strPathY, strFileY;
-          URIUtils::Split(items[y]->GetPath(), strPathY, strFileY);
-          //CLog::Log(LOGDEBUG," {}:{}:{}", y, strPathY, strFileY);
-
-          if (StringUtils::EqualsNoCase(strPathY, strPathX))
-            /*
-            remove everything sorted below the video_ts.ifo file in the same path.
-            understandably this wont stack correctly if there are other files in the the dvd folder.
-            this should be unlikely and thus is being ignored for now but we can monitor the
-            where the path changes and potentially remove the items above the video_ts.ifo file.
-            */
-            items.Remove(y);
-          else
-            break;
-        }
-      }
-      x++;
+      const std::string file = StringUtils::ToUpper(item->GetPath());
+      if (file.find("VIDEO_TS.IFO") != std::string::npos)
+        foldersToRemove.emplace_back(StringUtils::ToUpper(URIUtils::GetDirectory(file)));
+      if (file.find("INDEX.BDMV") != std::string::npos &&
+          file.find("BACKUP/INDEX.BDMV") == std::string::npos)
+        foldersToRemove.emplace_back(
+            StringUtils::ToUpper(URIUtils::GetParentPath(URIUtils::GetDirectory(file))));
     }
+
+    // Remove folders
+    items.erase(
+        std::remove_if(items.begin(), items.end(),
+                       [&](const CFileItemPtr& i)
+                       {
+                         const std::string fileAndPath(StringUtils::ToUpper(i->GetPath()));
+                         std::string file;
+                         std::string path;
+                         URIUtils::Split(fileAndPath, path, file);
+                         return (std::count_if(foldersToRemove.begin(), foldersToRemove.end(),
+                                               [&](const std::string& removePath)
+                                               { return path.rfind(removePath, 0) == 0; }) > 0) &&
+                                file != "VIDEO_TS.IFO" &&
+                                (file != "INDEX.BDMV" ||
+                                 fileAndPath.find("BACKUP/INDEX.BDMV") != std::string::npos);
+                       }),
+        items.end());
 
     // enumerate
     for (int i=0;i<items.Size();++i)
@@ -1966,7 +1974,7 @@ namespace VIDEO
       if (!hasEpisodeGuide)
       {
         // fetch episode guide
-        if (!showInfo.m_strEpisodeGuide.empty())
+        if (!showInfo.m_strEpisodeGuide.empty() && scraper->ID() != "metadata.local")
         {
           CScraperUrl url;
           url.ParseAndAppendUrlsFromEpisodeGuide(showInfo.m_strEpisodeGuide);
@@ -1989,8 +1997,10 @@ namespace VIDEO
       {
         CLog::Log(LOGERROR,
                   "VideoInfoScanner: Asked to lookup episode {}"
-                  " online, but we have no episode guide. Check your tvshow.nfo and make"
-                  " sure the <episodeguide> tag is in place.",
+                  " online, but we have either no episode guide or"
+                  " we are using the local scraper. Check your tvshow.nfo and make"
+                  " sure the <episodeguide> tag is in place and/or use an online"
+                  " scraper.",
                   CURL::GetRedacted(file->strPath));
         continue;
       }
@@ -2479,7 +2489,8 @@ namespace VIDEO
           CLog::Log(LOGDEBUG, "VideoInfoScanner: Added video extras {}",
                     CURL::GetRedacted(item->GetPath()));
         },
-        true, CServiceBroker::GetFileExtensionProvider().GetVideoExtensions(), DIR_FLAG_DEFAULTS);
+        [](auto) { return true; }, true,
+        CServiceBroker::GetFileExtensionProvider().GetVideoExtensions(), DIR_FLAG_DEFAULTS);
 
     return true;
   }
