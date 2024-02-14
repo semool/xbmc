@@ -2157,9 +2157,9 @@ void CVideoPlayer::HandlePlaySpeed()
         // the the bigger is the error we allow
         if (m_playSpeed > DVD_PLAYSPEED_NORMAL)
         {
-          int errorwin = m_playSpeed / DVD_PLAYSPEED_NORMAL;
-          if (errorwin > 8)
-            errorwin = 8;
+          double errorwin = static_cast<double>(m_playSpeed) / DVD_PLAYSPEED_NORMAL;
+          if (errorwin > 8.0)
+            errorwin = 8.0;
           error /= errorwin;
         }
 
@@ -3989,8 +3989,9 @@ void CVideoPlayer::FlushBuffers(double pts, bool accurate, bool sync)
   m_VideoPlayerRadioRDS->Flush();
   m_VideoPlayerAudioID3->Flush();
 
-  if (m_playSpeed == DVD_PLAYSPEED_NORMAL ||
-      m_playSpeed == DVD_PLAYSPEED_PAUSE)
+  if (m_playSpeed == DVD_PLAYSPEED_NORMAL || m_playSpeed == DVD_PLAYSPEED_PAUSE ||
+      (m_playSpeed >= DVD_PLAYSPEED_NORMAL * m_processInfo->MinTempoPlatform() &&
+       m_playSpeed <= DVD_PLAYSPEED_NORMAL * m_processInfo->MaxTempoPlatform()))
   {
     // make sure players are properly flushed, should put them in stalled state
     auto msg = std::make_shared<CDVDMsgGeneralSynchronize>(1s, SYNCSOURCE_AUDIO | SYNCSOURCE_VIDEO);
