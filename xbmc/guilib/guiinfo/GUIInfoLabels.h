@@ -72,7 +72,6 @@
 #define PLAYER_HAS_RESOLUTIONS       64
 #define PLAYER_FRAMEADVANCE          65
 #define PLAYER_ICON                  66
-#define PLAYER_CUTLIST               67
 #define PLAYER_CHAPTERS              68
 #define PLAYER_EDITLIST 69
 #define PLAYER_CUTS 70
@@ -568,8 +567,6 @@
 #define SYSTEM_BUILD_VERSION_CODE 1007
 #define SYSTEM_BUILD_VERSION_GIT 1008
 
-static constexpr unsigned int SYSTEM_LOCALE_TIMEZONECOUNTRY = 1009;
-static constexpr unsigned int SYSTEM_LOCALE_TIMEZONE = 1010;
 static constexpr unsigned int SYSTEM_LOCALE_REGION = 1011;
 static constexpr unsigned int SYSTEM_LOCALE = 1012;
 
