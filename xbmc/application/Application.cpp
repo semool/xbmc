@@ -61,6 +61,7 @@
 #include "filesystem/DllLibCurl.h"
 #include "filesystem/File.h"
 #include "music/MusicFileItemClassify.h"
+#include "network/NetworkFileItemClassify.h"
 #include "video/VideoFileItemClassify.h"
 #ifdef HAS_FILESYSTEM_NFS
 #include "filesystem/NFSFile.h"
@@ -809,7 +810,16 @@ void CApplication::Render()
     return;
 
   // render gui layer
-  if (appPower->GetRenderGUI() && !m_skipGuiRender)
+  const bool renderGUI = appPower->GetRenderGUI();
+  if (m_guiRenderLastState != std::nullopt && renderGUI && m_guiRenderLastState != renderGUI)
+  {
+    CGUIComponent* gui = CServiceBroker::GetGUI();
+    if (gui)
+      CServiceBroker::GetGUI()->GetWindowManager().MarkDirty();
+  }
+  m_guiRenderLastState = renderGUI;
+
+  if (renderGUI && !m_skipGuiRender)
   {
     if (CServiceBroker::GetWinSystem()->GetGfxContext().GetStereoMode())
     {
@@ -2189,7 +2199,7 @@ bool CApplication::PlayMedia(CFileItem& item, const std::string& player, PLAYLIS
       return ProcessAndStartPlaylist(smartpl.GetName(), playlist, smartplPlaylistId);
     }
   }
-  else if (item.IsPlayList() || item.IsInternetStream())
+  else if (item.IsPlayList() || NETWORK::IsInternetStream(item))
   {
     // Not owner. Dialog auto-deletes itself.
     CGUIDialogCache* dlgCache =
@@ -2429,7 +2439,7 @@ bool CApplication::PlayFile(CFileItem item,
   // a disc image might be Blu-Ray disc
   if (!(options.startpercent > 0.0 || options.starttime > 0.0) &&
       (VIDEO::IsBDFile(item) || item.IsDiscImage() ||
-       (VIDEO::IsBlurayPlaylist(item) && forceSelection)))
+       (forceSelection && VIDEO::IsBlurayPlaylist(item))))
   {
     // No video selection when using external or remote players (they handle it if supported)
     const bool isSimpleMenuAllowed = [&]()
