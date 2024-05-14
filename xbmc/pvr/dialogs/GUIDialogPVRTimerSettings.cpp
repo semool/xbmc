@@ -890,7 +890,12 @@ void CGUIDialogPVRTimerSettings::InitializeChannelsList()
   {
     m_channelEntries.insert(
         {index, ChannelDescriptor(PVR_CHANNEL_INVALID_UID, client.second->GetID(),
-                                  g_localizeStrings.Get(809))}); // "Any channel"
+                                  clients.size() == 1
+                                      // Any channel
+                                      ? g_localizeStrings.Get(809)
+                                      // Any channel from client "X"
+                                      : StringUtils::Format(g_localizeStrings.Get(853),
+                                                            client.second->GetFullClientName()))});
     ++index;
   }
 
@@ -935,7 +940,7 @@ void CGUIDialogPVRTimerSettings::TypesFiller(const SettingConstPtr& setting,
 
       const auto client = clients->GetCreatedClient(typeEntry.second->GetClientId());
       if (client)
-        clientName = client->GetFriendlyName();
+        clientName = client->GetFullClientName();
 
       list.emplace_back(typeEntry.second->GetDescription(), clientName, typeEntry.first,
                         typeEntry.second->IsReminder() ? reminderTimerProps : recordingTimerProps);
@@ -981,6 +986,31 @@ void CGUIDialogPVRTimerSettings::ChannelsFiller(const SettingConstPtr& setting,
       {
         current = channelEntry.first;
         foundCurrent = true;
+      }
+    }
+
+    if (foundCurrent)
+    {
+      // Verify m_channel is still valid. Update if not.
+      if (std::find_if(list.cbegin(), list.cend(),
+                       [&current](const auto& channel)
+                       { return channel.value == current; }) == list.cend())
+      {
+        // Set m_channel and current to first valid channel in list
+        const int first{list.front().value};
+        const auto it =
+            std::find_if(pThis->m_channelEntries.cbegin(), pThis->m_channelEntries.cend(),
+                         [first](const auto& channel) { return channel.first == first; });
+
+        if (it != pThis->m_channelEntries.cend())
+        {
+          current = (*it).first;
+          pThis->m_channel = (*it).second;
+        }
+        else
+        {
+          CLog::LogF(LOGERROR, "Unable to find channel to select");
+        }
       }
     }
   }
