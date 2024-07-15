@@ -135,7 +135,7 @@ install(FILES ${CMAKE_SOURCE_DIR}/tools/Linux/packaging/media/icon256x256.png
         DESTINATION ${datarootdir}/icons/hicolor/256x256/apps
         COMPONENT kodi)
 install(FILES ${CMAKE_SOURCE_DIR}/tools/Linux/packaging/media/iconScalable.svg
-        RENAME ${APP_NAME_LC}.png
+        RENAME ${APP_NAME_LC}.svg
         DESTINATION ${datarootdir}/icons/hicolor/scalable/apps
         COMPONENT kodi)
 
@@ -275,7 +275,7 @@ if(ENABLE_EVENTCLIENTS)
           DESTINATION ${bindir}
           COMPONENT kodi-eventclients-ps3)
 
-  if(TARGET ${APP_NAME_LC}::Bluetooth AND ${APP_NAME_LC}::CWiid AND GLU_FOUND)
+  if(TARGET ${APP_NAME_LC}::Bluetooth AND TARGET ${APP_NAME_LC}::CWiid AND TARGET ${APP_NAME_LC}::GLU)
     # Install kodi-eventclients-wiiremote
     install(PROGRAMS ${CMAKE_BINARY_DIR}/${CORE_BUILD_DIR}/WiiRemote/${APP_NAME_LC}-wiiremote
             DESTINATION ${bindir}
