@@ -70,7 +70,6 @@
 #include <android/log.h>
 #include <android/native_window.h>
 #include <android/native_window_jni.h>
-#include <androidjni/ActivityManager.h>
 #include <androidjni/ApplicationInfo.h>
 #include <androidjni/BitmapFactory.h>
 #include <androidjni/BroadcastReceiver.h>
@@ -92,7 +91,6 @@
 #include <androidjni/NetworkInfo.h>
 #include <androidjni/PackageManager.h>
 #include <androidjni/Resources.h>
-#include <androidjni/StatFs.h>
 #include <androidjni/System.h>
 #include <androidjni/SystemClock.h>
 #include <androidjni/SystemProperties.h>
@@ -105,8 +103,6 @@
 #include <jni.h>
 #include <rapidjson/document.h>
 #include <unistd.h>
-
-#define GIGABYTES       1073741824
 
 #define ACTION_XBMC_RESUME "android.intent.XBMC_RESUME"
 
@@ -262,8 +258,6 @@ void CXBMCApp::onStart()
     intentFilter.addAction(CJNIConnectivityManager::CONNECTIVITY_ACTION);
     registerReceiver(*this, intentFilter);
     m_mediaSession = std::make_unique<CJNIXBMCMediaSession>();
-    m_activityManager =
-        std::make_unique<CJNIActivityManager>(getSystemService(CJNIContext::ACTIVITY_SERVICE));
     m_inputHandler.setDPI(GetDPI());
     runNativeOnUiThread(RegisterDisplayListenerCallback, nullptr);
   }
@@ -1133,72 +1127,6 @@ bool CXBMCApp::GetExternalStorage(std::string &path, const std::string &type /* 
   return mounted && !path.empty();
 }
 
-bool CXBMCApp::GetStorageUsage(const std::string &path, std::string &usage)
-{
-#define PATH_MAXLEN 38
-
-  if (path.empty())
-  {
-    std::ostringstream fmt;
-
-    fmt.width(PATH_MAXLEN);
-    fmt << std::left << "Filesystem";
-
-    fmt.width(12);
-    fmt << std::right << "Size";
-
-    fmt.width(12);
-    fmt << "Used";
-
-    fmt.width(12);
-    fmt << "Avail";
-
-    fmt.width(12);
-    fmt << "Use %";
-
-    usage = fmt.str();
-    return false;
-  }
-
-  CJNIStatFs fileStat(path);
-  int blockSize = fileStat.getBlockSize();
-  int blockCount = fileStat.getBlockCount();
-  int freeBlocks = fileStat.getFreeBlocks();
-
-  if (blockSize <= 0 || blockCount <= 0 || freeBlocks < 0)
-    return false;
-
-  float totalSize = (float)blockSize * blockCount / GIGABYTES;
-  float freeSize = (float)blockSize * freeBlocks / GIGABYTES;
-  float usedSize = totalSize - freeSize;
-  float usedPercentage = usedSize / totalSize * 100;
-
-  std::ostringstream fmt;
-
-  fmt << std::fixed;
-  fmt.precision(1);
-
-  fmt.width(PATH_MAXLEN);
-  fmt << std::left
-      << (path.size() < PATH_MAXLEN - 1 ? path : StringUtils::Left(path, PATH_MAXLEN - 4) + "...");
-
-  fmt.width(11);
-  fmt << std::right << totalSize << "G";
-
-  fmt.width(11);
-  fmt << usedSize << "G";
-
-  fmt.width(11);
-  fmt << freeSize << "G";
-
-  fmt.precision(0);
-  fmt.width(11);
-  fmt << usedPercentage << "%";
-
-  usage = fmt.str();
-  return true;
-}
-
 // Used in Application.cpp to figure out volume steps
 int CXBMCApp::GetMaxSystemVolume()
 {
@@ -1557,27 +1485,6 @@ float CXBMCApp::GetFrameLatencyMs() const
 bool CXBMCApp::WaitVSync(unsigned int milliSeconds)
 {
   return m_vsyncEvent.Wait(std::chrono::milliseconds(milliSeconds));
-}
-
-bool CXBMCApp::GetMemoryInfo(long& availMem, long& totalMem)
-{
-  if (m_activityManager)
-  {
-    CJNIActivityManager::MemoryInfo info;
-    m_activityManager->getMemoryInfo(info);
-    if (xbmc_jnienv()->ExceptionCheck())
-    {
-      xbmc_jnienv()->ExceptionClear();
-      return false;
-    }
-
-    availMem = info.availMem();
-    totalMem = info.totalMem();
-
-    return true;
-  }
-
-  return false;
 }
 
 void CXBMCApp::SetupEnv()

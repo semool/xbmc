@@ -40,7 +40,6 @@ class CVariant;
 class IInputDeviceCallbacks;
 class IInputDeviceEventHandler;
 class CVideoSyncAndroid;
-class CJNIActivityManager;
 
 typedef struct _JNIEnv JNIEnv;
 
@@ -173,8 +172,7 @@ public:
    * \param type optional type. Possible values are "", "files", "music", "videos", "pictures", "photos, "downloads"
    * \return true if external storage is available and a valid path has been stored in the path parameter
    */
-  static bool GetExternalStorage(std::string &path, const std::string &type = "");
-  static bool GetStorageUsage(const std::string &path, std::string &usage);
+  static bool GetExternalStorage(std::string& path, const std::string& type = "");
   static int GetMaxSystemVolume();
   static float GetSystemVolume();
   static void SetSystemVolume(float percent);
@@ -216,8 +214,6 @@ public:
 
   bool getVideosurfaceInUse();
   void setVideosurfaceInUse(bool videosurfaceInUse);
-
-  bool GetMemoryInfo(long& availMem, long& totalMem);
 
 protected:
   // limit who can access Volume
@@ -275,8 +271,6 @@ private:
   CVideoSyncAndroid* m_syncImpl{nullptr};
   CEvent m_vsyncEvent;
   CEvent m_displayChangeEvent;
-
-  std::unique_ptr<CJNIActivityManager> m_activityManager;
 
   bool XBMC_DestroyDisplay();
   bool XBMC_SetupDisplay();
