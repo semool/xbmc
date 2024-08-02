@@ -9,6 +9,7 @@
 	<include file="Includes_DialogSelect.xml" />
 	<include file="Includes_MusicInfo.xml" />
 	<include file="Includes_PVR.xml" />
+	<include file="Includes_SettingsDialog.xml" />
 	<include file="View_50_List.xml" />
 	<include file="View_51_Poster.xml" />
 	<include file="View_52_IconWall.xml" />
@@ -1242,7 +1243,8 @@
 			<depth>DepthBackground</depth>
 			<include>FullScreenDimensions</include>
 			<aspectratio>scale</aspectratio>
-			<texture colordiffuse="secondary_background" fallback="special://skin/extras/backgrounds/pattern1.jpg">$INFO[Skin.String(background_overlay),special://skin/extras/backgrounds/pattern,.jpg]</texture>
+			<texture colordiffuse="secondary_background" fallback="special://skin/extras/backgrounds/pattern1.png">$INFO[Skin.String(background_overlay),special://skin/extras/backgrounds/pattern,.png]</texture>
+			<visible>!String.IsEqual(Skin.String(background_overlay),0)</visible>
 		</control>
 	</include>
 	<include name="DefaultBackground">

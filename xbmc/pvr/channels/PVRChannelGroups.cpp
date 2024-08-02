@@ -250,7 +250,8 @@ std::vector<std::shared_ptr<CPVRChannelGroupMember>> CPVRChannelGroups::GetMembe
     const auto allGroupMembers = GetGroupAll()->GetMembers();
     for (const auto& groupMember : allGroupMembers)
     {
-      if (!group->IsGroupMember(groupMember))
+      if (!group->IsGroupMember(groupMember) &&
+          (group->IsChannelsOwner() || !groupMember->Channel()->IsHidden()))
         result.emplace_back(groupMember);
     }
   }
@@ -738,6 +739,10 @@ bool CPVRChannelGroups::AppendToGroup(
 
     if (group->AppendToGroup(groupMember))
     {
+      // Changes in the all channels group may require resorting/renumbering of other groups.
+      if (group->IsChannelsOwner())
+        UpdateChannelNumbersFromAllChannelsGroup();
+
       GroupStateChanged(group);
       return true;
     }
@@ -760,6 +765,11 @@ bool CPVRChannelGroups::RemoveFromGroup(const std::shared_ptr<CPVRChannelGroup>&
     if (group->RemoveFromGroup(groupMember))
     {
       group->DeleteGroupMember(groupMember);
+
+      // Changes in the all channels group may require resorting/renumbering of other groups.
+      if (group->IsChannelsOwner())
+        UpdateChannelNumbersFromAllChannelsGroup();
+
       GroupStateChanged(group);
       return true;
     }
