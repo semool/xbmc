@@ -233,6 +233,7 @@ public:
   static constexpr auto SETTING_PVRRECORD_MARGINSTART = "pvrrecord.marginstart";
   static constexpr auto SETTING_PVRRECORD_MARGINEND = "pvrrecord.marginend";
   static constexpr auto SETTING_PVRRECORD_TIMERNOTIFICATIONS = "pvrrecord.timernotifications";
+  static constexpr auto SETTING_PVRRECORD_DELETEAFTERWATCH = "pvrrecord.deleteafterwatch";
   static constexpr auto SETTING_PVRRECORD_GROUPRECORDINGS = "pvrrecord.grouprecordings";
   static constexpr auto SETTING_PVRREMINDERS_AUTOCLOSEDELAY = "pvrreminders.autoclosedelay";
   static constexpr auto SETTING_PVRREMINDERS_AUTORECORD = "pvrreminders.autorecord";
@@ -397,6 +398,7 @@ public:
   static constexpr auto SETTING_AUDIOOUTPUT_ATEMPOTHRESHOLD = "audiooutput.atempothreshold";
   static constexpr auto SETTING_AUDIOOUTPUT_STREAMSILENCE = "audiooutput.streamsilence";
   static constexpr auto SETTING_AUDIOOUTPUT_STREAMNOISE = "audiooutput.streamnoise";
+  static constexpr auto SETTING_AUDIOOUTPUT_MIXSUBLEVEL = "audiooutput.mixsublevel";
   static constexpr auto SETTING_AUDIOOUTPUT_GUISOUNDMODE = "audiooutput.guisoundmode";
   static constexpr auto SETTING_AUDIOOUTPUT_GUISOUNDVOLUME = "audiooutput.guisoundvolume";
   static constexpr auto SETTING_AUDIOOUTPUT_PASSTHROUGH = "audiooutput.passthrough";
