@@ -425,9 +425,14 @@ bool CPVRGUIInfo::GetListItemAndPlayerLabel(const CFileItem* item,
       case LISTITEM_SEASON:
       case LISTITEM_EPISODE:
       case LISTITEM_EPISODENAME:
+      case LISTITEM_EPISODEPART:
       case LISTITEM_DIRECTOR:
       case LISTITEM_CHANNEL_NUMBER:
       case LISTITEM_PREMIERED:
+      case LISTITEM_PARENTAL_RATING:
+      case LISTITEM_PARENTAL_RATING_CODE:
+      case LISTITEM_PARENTAL_RATING_ICON:
+      case LISTITEM_PARENTAL_RATING_SOURCE:
         break; // obtain value from channel/epg
       default:
         return false;
@@ -567,6 +572,33 @@ bool CPVRGUIInfo::GetListItemAndPlayerLabel(const CFileItem* item,
         strValue =
             CServiceBroker::GetPVRManager().GetClient(recording->ClientID())->GetInstanceName();
         return true;
+      case VIDEOPLAYER_PARENTAL_RATING:
+      case LISTITEM_PARENTAL_RATING:
+      {
+        const unsigned int rating{recording->GetParentalRating()};
+        if (rating > 0)
+        {
+          strValue = std::to_string(rating);
+          return true;
+        }
+        return false;
+      }
+      case LISTITEM_PARENTAL_RATING_CODE:
+        strValue = recording->GetParentalRatingCode();
+        return true;
+      case LISTITEM_PARENTAL_RATING_ICON:
+        strValue = recording->GetParentalRatingIcon();
+        return true;
+      case LISTITEM_PARENTAL_RATING_SOURCE:
+        strValue = recording->GetParentalRatingSource();
+        return true;
+      case VIDEOPLAYER_EPISODEPART:
+      case LISTITEM_EPISODEPART:
+        if (recording->m_iEpisode > 0 && recording->EpisodePart() > 0)
+        {
+          strValue = std::to_string(recording->EpisodePart());
+          return true;
+        }
     }
     return false;
   }
@@ -759,6 +791,11 @@ bool CPVRGUIInfo::GetListItemAndPlayerLabel(const CFileItem* item,
           return true;
         }
         return false;
+      case VIDEOPLAYER_EPISODEPART:
+      case LISTITEM_EPISODEPART:
+        if (epgTag->EpisodeNumber() >= 0 && epgTag->EpisodePart() > 0)
+          strValue = std::to_string(epgTag->EpisodePart());
+        return true;
       case VIDEOPLAYER_EPISODENAME:
       case LISTITEM_EPISODENAME:
         if (!CServiceBroker::GetPVRManager().IsParentalLocked(epgTag))
@@ -785,12 +822,15 @@ bool CPVRGUIInfo::GetListItemAndPlayerLabel(const CFileItem* item,
         return true;
       case VIDEOPLAYER_PARENTAL_RATING:
       case LISTITEM_PARENTAL_RATING:
-        if (epgTag->ParentalRating() > 0)
+      {
+        const unsigned int rating{epgTag->ParentalRating()};
+        if (rating > 0)
         {
-          strValue = std::to_string(epgTag->ParentalRating());
+          strValue = std::to_string(rating);
           return true;
         }
         return false;
+      }
       case LISTITEM_PARENTAL_RATING_CODE:
         strValue = epgTag->ParentalRatingCode();
         return true;
@@ -799,6 +839,12 @@ bool CPVRGUIInfo::GetListItemAndPlayerLabel(const CFileItem* item,
         return true;
       case LISTITEM_PVR_INSTANCE_NAME:
         strValue = CServiceBroker::GetPVRManager().GetClient(epgTag->ClientID())->GetInstanceName();
+        return true;
+      case LISTITEM_PARENTAL_RATING_ICON:
+        strValue = epgTag->ParentalRatingIcon();
+        return true;
+      case LISTITEM_PARENTAL_RATING_SOURCE:
+        strValue = epgTag->ParentalRatingSource();
         return true;
       case VIDEOPLAYER_PREMIERED:
       case LISTITEM_PREMIERED:

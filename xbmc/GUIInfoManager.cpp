@@ -3954,6 +3954,15 @@ const infomap musicplayer[] =    {{ "title",            MUSICPLAYER_TITLE },
 ///     <p><hr>
 ///     @skinning_v21 **[New Infolabel]** \link VideoPlayer_VideoVersionName `VideoPlayer.VideoVersionName`\endlink
 ///   }
+///   \table_row3{   <b>`VideoPlayer.EpisodePart`</b>,
+///                  \anchor VideoPlayer_EpisodePart
+///                  _string_,
+///     @return string containing the number of parts of a single episode - empty if no data provided
+///     <p><hr>
+///     @skinning_v22 **[Infolabel Updated]** \link VideoPlayer_EpisodePart `VideoPlayer.EpisodePart`\endlink
+///     also supports EPG.
+///     <p>
+///   }///
 /// \table_end
 ///
 /// -----------------------------------------------------------------------------
@@ -4032,7 +4041,8 @@ const infomap videoplayer[] =    {{ "title",            VIDEOPLAYER_TITLE },
                                   { "hdrtype",          VIDEOPLAYER_HDR_TYPE },
                                   { "art",              VIDEOPLAYER_ART},
                                   { "videoversionname", VIDEOPLAYER_VIDEOVERSION_NAME},
-                                  { "hasvideoversions", VIDEOPLAYER_HAS_VIDEOVERSIONS}
+                                  { "hasvideoversions", VIDEOPLAYER_HAS_VIDEOVERSIONS},
+                                  { "episodepart",      VIDEOPLAYER_EPISODEPART}
 };
 // clang-format on
 
@@ -6794,6 +6804,25 @@ const infomap container_str[]  = {{ "property",         CONTAINER_PROPERTY },
 ///     @skinning_v21 **[New Infolabel]** \link ListItem_ParentalRatingCode `ListItem.ParentalRatingCode`\endlink
 ///     <p>
 ///   }
+///   \table_row3{   <b>`ListItem.ParentalRatingIcon`</b>,
+///                  \anchor ListItem_ParentalRatingIcon
+///                  _string_,
+///     @return The parental rating icon path of the list item (PVR).
+///     <p><hr>
+///     @skinning_v22 **[New Infolabel]** \link ListItem_ParentalRatingIcon `ListItem.ParentalRatingIcon`\endlink
+///     <p>
+///   }
+///   \table_row3{   <b>`ListItem.ParentalRatingSource`</b>,
+///                  \anchor ListItem_ParentalRatingSource
+///                  _string_,
+///     @return The source used to determine the parental rating of the list item (PVR).
+///     Values could include the Country alpha-3 code or the name/abbreviation
+///     of the authority issuing the rating code.  Can be used with
+///     the \link ListItem_ParentalRatingCode `ParentalRatingCode`\endlink for skin-derived icons if required.
+///     <p><hr>
+///     @skinning_v22 **[New Infolabel]** \link ListItem_ParentalRatingSource `ListItem.ParentalRatingSource`\endlink
+///     <p>
+///   }
 ///   \table_row3{   <b>`ListItem.CurrentItem`</b>,
 ///                  \anchor ListItem_CurrentItem
 ///                  _string_,
@@ -7015,6 +7044,15 @@ const infomap container_str[]  = {{ "property",         CONTAINER_PROPERTY },
 ///     @skinning_v22 **[New Infolabel]** \link ListItem_PVRGroupOrigin `ListItem.PVRGroupOrigin`\endlink
 ///     <p>
 ///   }
+///   \table_row3{   <b>`ListItem.EpisodePart`</b>,
+///                  \anchor ListItem_EpisodePart
+///                  _string_,
+///     @return string containing the number of parts of a single episode - empty if no data provided
+///     <p><hr>
+///     @skinning_v22 **[New Infolabel]** \link ListItem_EpisodePart `ListItem.EpisodePart`\endlink
+///     <p>
+///   }
+///
 /// \table_end
 ///
 /// -----------------------------------------------------------------------------
@@ -7214,6 +7252,8 @@ const infomap listitem_labels[]= {{ "thumb",            LISTITEM_THUMB },
                                   { "property",         LISTITEM_PROPERTY },
                                   { "parentalrating",   LISTITEM_PARENTAL_RATING },
                                   { "parentalratingcode", LISTITEM_PARENTAL_RATING_CODE },
+                                  { "parentalratingicon", LISTITEM_PARENTAL_RATING_ICON },
+                                  { "parentalratingsource", LISTITEM_PARENTAL_RATING_SOURCE },
                                   { "currentitem",      LISTITEM_CURRENTITEM },
                                   { "isnew",            LISTITEM_IS_NEW },
                                   { "isboxset",         LISTITEM_IS_BOXSET },
@@ -7240,6 +7280,7 @@ const infomap listitem_labels[]= {{ "thumb",            LISTITEM_THUMB },
                                   { "pvrclientname",    LISTITEM_PVR_CLIENT_NAME },
                                   { "pvrinstancename",  LISTITEM_PVR_INSTANCE_NAME },
                                   { "pvrgrouporigin",   LISTITEM_PVR_GROUP_ORIGIN },
+                                  { "episodepart",      LISTITEM_EPISODEPART },
 };
 // clang-format on
 
