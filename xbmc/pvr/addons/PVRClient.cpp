@@ -18,6 +18,7 @@
 #include "events/NotificationEvent.h"
 #include "filesystem/SpecialProtocol.h"
 #include "guilib/LocalizeStrings.h"
+#include "pvr/PVRConstants.h" // PVR_CLIENT_INVALID_UID
 #include "pvr/PVRDatabase.h"
 #include "pvr/PVRDescrambleInfo.h"
 #include "pvr/PVRManager.h"
@@ -68,6 +69,10 @@ class CAddonChannelGroup : public PVR_CHANNEL_GROUP
 public:
   explicit CAddonChannelGroup(const CPVRChannelGroup& group) : m_groupName(group.ClientGroupName())
   {
+    // zero-init base struct members
+    PVR_CHANNEL_GROUP* base = static_cast<PVR_CHANNEL_GROUP*>(this);
+    *base = {};
+
     bIsRadio = group.IsRadio();
     strGroupName = m_groupName.c_str();
     iPosition = group.GetClientPosition();
@@ -86,6 +91,10 @@ public:
       m_mimeType(channel.MimeType()),
       m_iconPath(channel.ClientIconPath())
   {
+    // zero-init base struct members
+    PVR_CHANNEL* base = static_cast<PVR_CHANNEL*>(this);
+    *base = {};
+
     iUniqueId = channel.UniqueID();
     iChannelNumber = channel.ClientChannelNumber().GetChannelNumber();
     iSubChannelNumber = channel.ClientChannelNumber().GetSubChannelNumber();
@@ -127,6 +136,10 @@ public:
       m_parentalRatingIcon(""), //! @todo
       m_parentalRatingSource("") //! @todo
   {
+    // zero-init base struct members
+    PVR_RECORDING* base = static_cast<PVR_RECORDING*>(this);
+    *base = {};
+
     time_t recTime;
     recording.RecordingTimeAsUTC().GetAsTime(recTime);
 
@@ -200,6 +213,10 @@ public:
       m_summary(timer.Summary()),
       m_seriesLink(timer.SeriesLink())
   {
+    // zero-init base struct members
+    PVR_TIMER* base = static_cast<PVR_TIMER*>(this);
+    *base = {};
+
     time_t start;
     timer.StartAsUTC().GetAsTime(start);
     time_t end;
@@ -269,6 +286,10 @@ public:
       m_parentalRatingIcon(""), //! @todo
       m_parentalRatingSource("") //! @todo
   {
+    // zero-init base struct members
+    EPG_TAG* base = static_cast<EPG_TAG*>(this);
+    *base = {};
+
     time_t t;
     tag.StartAsUTC().GetAsTime(t);
     startTime = t;
@@ -1553,11 +1574,12 @@ PVR_ERROR CPVRClient::GetDescrambleInfo(int channelUid, CPVRDescrambleInfo& desc
 }
 
 PVR_ERROR CPVRClient::GetChannelStreamProperties(const std::shared_ptr<const CPVRChannel>& channel,
+                                                 PVR_SOURCE source,
                                                  CPVRStreamProperties& props) const
 {
   return DoAddonCall(
       __func__,
-      [this, &channel, &props](const AddonInstance* addon)
+      [this, &channel, source, &props](const AddonInstance* addon)
       {
         if (!CanPlayChannel(channel))
           return PVR_ERROR_NO_ERROR; // no error, but no need to obtain the values from the addon
@@ -1567,7 +1589,7 @@ PVR_ERROR CPVRClient::GetChannelStreamProperties(const std::shared_ptr<const CPV
         PVR_NAMED_VALUE** property_array{nullptr};
         unsigned int size{0};
         const PVR_ERROR error{addon->toAddon->GetChannelStreamProperties(
-            addon, &addonChannel, PVR_SOURCE::DEFAULT, &property_array, &size)};
+            addon, &addonChannel, source, &property_array, &size)};
         if (error == PVR_ERROR_NO_ERROR)
           WriteStreamProperties(property_array, size, props);
 
@@ -1604,6 +1626,12 @@ PVR_ERROR CPVRClient::GetStreamProperties(PVR_STREAM_PROPERTIES* props) const
 {
   return DoAddonCall(__func__, [&props](const AddonInstance* addon)
                      { return addon->toAddon->GetStreamProperties(addon, props); });
+}
+
+PVR_ERROR CPVRClient::StreamClosed() const
+{
+  return DoAddonCall(__func__, [](const AddonInstance* addon)
+                     { return addon->toAddon->StreamClosed(addon); });
 }
 
 PVR_ERROR CPVRClient::DemuxReset()
@@ -1999,7 +2027,7 @@ void CPVRClient::SetPriority(int iPriority)
   if (m_priority != iPriority)
   {
     m_priority = iPriority;
-    if (m_iClientId > PVR_INVALID_CLIENT_ID)
+    if (m_iClientId != PVR_CLIENT_INVALID_UID)
     {
       CServiceBroker::GetPVRManager().GetTVDatabase()->Persist(*this);
     }
@@ -2010,7 +2038,7 @@ void CPVRClient::SetPriority(int iPriority)
 int CPVRClient::GetPriority() const
 {
   std::unique_lock<CCriticalSection> lock(m_critSection);
-  if (!m_priority.has_value() && m_iClientId > PVR_INVALID_CLIENT_ID)
+  if (!m_priority.has_value() && m_iClientId != PVR_CLIENT_INVALID_UID)
   {
     m_priority = CServiceBroker::GetPVRManager().GetTVDatabase()->GetPriority(*this);
   }
@@ -2020,7 +2048,7 @@ int CPVRClient::GetPriority() const
 const CDateTime& CPVRClient::GetDateTimeFirstChannelsAdded() const
 {
   std::unique_lock<CCriticalSection> lock(m_critSection);
-  if (!m_firstChannelsAdded.has_value() && m_iClientId > PVR_INVALID_CLIENT_ID)
+  if (!m_firstChannelsAdded.has_value() && m_iClientId != PVR_CLIENT_INVALID_UID)
   {
     m_firstChannelsAdded =
         CServiceBroker::GetPVRManager().GetTVDatabase()->GetDateTimeFirstChannelsAdded(*this);
@@ -2034,7 +2062,7 @@ void CPVRClient::SetDateTimeFirstChannelsAdded(const CDateTime& dateTime)
   if (m_firstChannelsAdded != dateTime)
   {
     m_firstChannelsAdded = dateTime;
-    if (m_iClientId > PVR_INVALID_CLIENT_ID)
+    if (m_iClientId != PVR_CLIENT_INVALID_UID)
     {
       CServiceBroker::GetPVRManager().GetTVDatabase()->Persist(*this);
     }
