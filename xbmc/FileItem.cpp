@@ -1944,86 +1944,15 @@ std::string CFileItem::FindLocalArt(const std::string &artFile, bool useFolder) 
   std::string thumb;
   if (!m_bIsFolder)
   {
-    thumb = GetLocalArt(artFile, false);
+    thumb = ART::GetLocalArt(*this, artFile, false);
     if (!thumb.empty() && CFile::Exists(thumb))
       return thumb;
   }
   if ((useFolder || (m_bIsFolder && !IsFileFolder())) && !artFile.empty())
   {
-    std::string thumb2 = GetLocalArt(artFile, true);
+    std::string thumb2 = ART::GetLocalArt(*this, artFile, true);
     if (!thumb2.empty() && thumb2 != thumb && CFile::Exists(thumb2))
       return thumb2;
-  }
-  return "";
-}
-
-std::string CFileItem::GetLocalArtBaseFilename() const
-{
-  bool useFolder = false;
-  return GetLocalArtBaseFilename(useFolder);
-}
-
-std::string CFileItem::GetLocalArtBaseFilename(bool& useFolder) const
-{
-  std::string strFile;
-  if (IsStack())
-  {
-    std::string strPath;
-    URIUtils::GetParentPath(m_strPath,strPath);
-    strFile = URIUtils::AddFileToFolder(
-        strPath, URIUtils::GetFileName(CStackDirectory::GetStackedTitlePath(m_strPath)));
-  }
-
-  std::string file = strFile.empty() ? m_strPath : strFile;
-  if (URIUtils::IsInRAR(file) || URIUtils::IsInZIP(file))
-  {
-    std::string strPath = URIUtils::GetDirectory(file);
-    std::string strParent;
-    URIUtils::GetParentPath(strPath,strParent);
-    strFile = URIUtils::AddFileToFolder(strParent, URIUtils::GetFileName(file));
-  }
-
-  if (IsMultiPath())
-    strFile = CMultiPathDirectory::GetFirstPath(m_strPath);
-
-  if (IsOpticalMediaFile())
-  { // optical media files should be treated like folders
-    useFolder = true;
-    strFile = GetLocalMetadataPath();
-  }
-  else if (useFolder && !(m_bIsFolder && !IsFileFolder()))
-  {
-    file = strFile.empty() ? m_strPath : strFile;
-    strFile = URIUtils::GetDirectory(file);
-  }
-
-  if (strFile.empty())
-    strFile = GetDynPath();
-
-  return strFile;
-}
-
-std::string CFileItem::GetLocalArt(const std::string& artFile, bool useFolder) const
-{
-  // no retrieving of empty art files from folders
-  if (useFolder && artFile.empty())
-    return "";
-
-  std::string strFile = GetLocalArtBaseFilename(useFolder);
-  if (strFile.empty()) // empty filepath -> nothing to find
-    return "";
-
-  if (useFolder)
-  {
-    if (!artFile.empty())
-      return URIUtils::AddFileToFolder(strFile, artFile);
-  }
-  else
-  {
-    if (artFile.empty()) // old thumbnail matching
-      return URIUtils::ReplaceExtension(strFile, ".tbn");
-    else
-      return URIUtils::ReplaceExtension(strFile, "-" + artFile);
   }
   return "";
 }

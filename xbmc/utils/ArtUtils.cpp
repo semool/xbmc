@@ -178,6 +178,71 @@ std::string GetFolderThumb(const CFileItem& item, const std::string& folderJPG /
   return URIUtils::AddFileToFolder(strFolder, folderJPG);
 }
 
+std::string GetLocalArt(const CFileItem& item, const std::string& artFile, bool useFolder)
+{
+  // no retrieving of empty art files from folders
+  if (useFolder && artFile.empty())
+    return "";
+
+  std::string strFile = GetLocalArtBaseFilename(item, useFolder);
+  if (strFile.empty()) // empty filepath -> nothing to find
+    return "";
+
+  if (useFolder)
+  {
+    if (!artFile.empty())
+      return URIUtils::AddFileToFolder(strFile, artFile);
+  }
+  else
+  {
+    if (artFile.empty()) // old thumbnail matching
+      return URIUtils::ReplaceExtension(strFile, ".tbn");
+    else
+      return URIUtils::ReplaceExtension(strFile, "-" + artFile);
+  }
+  return "";
+}
+
+std::string GetLocalArtBaseFilename(const CFileItem& item, bool& useFolder)
+{
+  std::string strFile;
+  if (item.IsStack())
+  {
+    std::string strPath;
+    URIUtils::GetParentPath(item.GetPath(), strPath);
+    strFile = URIUtils::AddFileToFolder(
+        strPath, URIUtils::GetFileName(CStackDirectory::GetStackedTitlePath(item.GetPath())));
+  }
+
+  std::string file = strFile.empty() ? item.GetPath() : strFile;
+  if (URIUtils::IsInRAR(file) || URIUtils::IsInZIP(file))
+  {
+    std::string strPath = URIUtils::GetDirectory(file);
+    std::string strParent;
+    URIUtils::GetParentPath(strPath, strParent);
+    strFile = URIUtils::AddFileToFolder(strParent, URIUtils::GetFileName(file));
+  }
+
+  if (item.IsMultiPath())
+    strFile = CMultiPathDirectory::GetFirstPath(item.GetPath());
+
+  if (item.IsOpticalMediaFile())
+  { // optical media files should be treated like folders
+    useFolder = true;
+    strFile = item.GetLocalMetadataPath();
+  }
+  else if (useFolder && !(item.m_bIsFolder && !item.IsFileFolder()))
+  {
+    file = strFile.empty() ? item.GetPath() : strFile;
+    strFile = URIUtils::GetDirectory(file);
+  }
+
+  if (strFile.empty())
+    strFile = item.GetDynPath();
+
+  return strFile;
+}
+
 std::string GetLocalFanart(const CFileItem& item)
 {
   if (VIDEO::IsVideoDb(item))
