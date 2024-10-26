@@ -220,6 +220,11 @@ void CXBMCApp::Announce(ANNOUNCEMENT::AnnouncementFlag flag,
       m_mediaSessionUpdated = false;
       UpdateSessionState();
     }
+    else if (message == "OnAVStart")
+    {
+      m_mediaSessionUpdated = false;
+      UpdateSessionState();
+    }
   }
   else if (flag & Info)
   {
@@ -469,7 +474,8 @@ void CXBMCApp::UnregisterDisplayListener()
 
 void CXBMCApp::Initialize()
 {
-  CServiceBroker::GetAnnouncementManager()->AddAnnouncer(this);
+  CServiceBroker::GetAnnouncementManager()->AddAnnouncer(
+      this, ANNOUNCEMENT::Input | ANNOUNCEMENT::Player | ANNOUNCEMENT::Info);
 }
 
 void CXBMCApp::Deinitialize()
@@ -919,9 +925,9 @@ void CXBMCApp::OnPlayBackStopped()
   CLog::Log(LOGDEBUG, "{}", __PRETTY_FUNCTION__);
 
   m_playback_state = PLAYBACK_STATE_STOPPED;
+  m_mediaSessionUpdated = false;
   UpdateSessionState();
   m_mediaSession->activate(false);
-  m_mediaSessionUpdated = false;
 
   RequestVisibleBehind(false);
   CAndroidKey::SetHandleMediaKeys(true);
