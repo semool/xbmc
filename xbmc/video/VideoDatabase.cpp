@@ -1464,6 +1464,8 @@ int CVideoDatabase::GetMusicVideoId(const std::string& strFilenameAndPath)
 //********************************************************************************************************************************
 int CVideoDatabase::AddNewMovie(CVideoInfoTag& details)
 {
+  assert(m_pDB->in_transaction());
+
   const auto filePath = details.GetPath();
 
   try
@@ -1480,8 +1482,6 @@ int CVideoDatabase::AddNewMovie(CVideoInfoTag& details)
         return -1;
     }
 
-    BeginTransaction();
-
     m_pDS->exec(
         PrepareSQL("INSERT INTO movie (idMovie, idFile) VALUES (NULL, %i)", details.m_iFileId));
     details.m_iDbId = static_cast<int>(m_pDS->lastinsertid());
@@ -1491,14 +1491,11 @@ int CVideoDatabase::AddNewMovie(CVideoInfoTag& details)
                    details.m_iFileId, details.m_iDbId, MediaTypeMovie, VideoAssetType::VERSION,
                    VIDEO_VERSION_ID_DEFAULT));
 
-    CommitTransaction();
-
     return details.m_iDbId;
   }
   catch (...)
   {
     CLog::Log(LOGERROR, "{} ({}) failed", __FUNCTION__, filePath);
-    RollbackTransaction();
   }
   return -1;
 }
@@ -3273,34 +3270,32 @@ void CVideoDatabase::SetStreamDetailsForFileId(const CStreamDetails& details, in
 
     for (int i=1; i<=details.GetVideoStreamCount(); i++)
     {
-      m_pDS->exec(PrepareSQL("INSERT INTO streamdetails "
-                             "(idFile, iStreamType, strVideoCodec, fVideoAspect, iVideoWidth, "
-                             "iVideoHeight, iVideoDuration, strStereoMode, strVideoLanguage,  "
-                             "strHdrType)"
-                             "VALUES (%i,%i,'%s',%f,%i,%i,%i,'%s','%s','%s')",
-                             idFile, (int)CStreamDetail::VIDEO, details.GetVideoCodec(i).c_str(),
-                             static_cast<double>(details.GetVideoAspect(i)),
-                             details.GetVideoWidth(i), details.GetVideoHeight(i),
-                             details.GetVideoDuration(i), details.GetStereoMode(i).c_str(),
-                             details.GetVideoLanguage(i).c_str(),
-                             details.GetVideoHdrType(i).c_str()));
+      m_pDS->exec(PrepareSQL(
+          "INSERT INTO streamdetails "
+          "(idFile, iStreamType, strVideoCodec, fVideoAspect, iVideoWidth, iVideoHeight, "
+          "iVideoDuration, strStereoMode, strVideoLanguage, strHdrType) "
+          "VALUES (%i,%i,'%s',%f,%i,%i,%i,'%s','%s','%s')",
+          idFile, static_cast<int>(CStreamDetail::VIDEO), details.GetVideoCodec(i).c_str(),
+          static_cast<double>(details.GetVideoAspect(i)), details.GetVideoWidth(i),
+          details.GetVideoHeight(i), details.GetVideoDuration(i), details.GetStereoMode(i).c_str(),
+          details.GetVideoLanguage(i).c_str(), details.GetVideoHdrType(i).c_str()));
     }
     for (int i=1; i<=details.GetAudioStreamCount(); i++)
     {
-      m_pDS->exec(PrepareSQL("INSERT INTO streamdetails "
-        "(idFile, iStreamType, strAudioCodec, iAudioChannels, strAudioLanguage) "
-        "VALUES (%i,%i,'%s',%i,'%s')",
-        idFile, (int)CStreamDetail::AUDIO,
-        details.GetAudioCodec(i).c_str(), details.GetAudioChannels(i),
-        details.GetAudioLanguage(i).c_str()));
+      m_pDS->exec(PrepareSQL(
+          "INSERT INTO streamdetails "
+          "(idFile, iStreamType, strAudioCodec, iAudioChannels, strAudioLanguage) "
+          "VALUES (%i,%i,'%s',%i,'%s')",
+          idFile, static_cast<int>(CStreamDetail::AUDIO), details.GetAudioCodec(i).c_str(),
+          details.GetAudioChannels(i), details.GetAudioLanguage(i).c_str()));
     }
     for (int i=1; i<=details.GetSubtitleStreamCount(); i++)
     {
       m_pDS->exec(PrepareSQL("INSERT INTO streamdetails "
-        "(idFile, iStreamType, strSubtitleLanguage) "
-        "VALUES (%i,%i,'%s')",
-        idFile, (int)CStreamDetail::SUBTITLE,
-        details.GetSubtitleLanguage(i).c_str()));
+                             "(idFile, iStreamType, strSubtitleLanguage) "
+                             "VALUES (%i,%i,'%s')",
+                             idFile, static_cast<int>(CStreamDetail::SUBTITLE),
+                             details.GetSubtitleLanguage(i).c_str()));
     }
 
     // update the runtime information, if empty
