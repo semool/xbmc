@@ -49,13 +49,13 @@ void CMediaSource::FromNameAndPaths(const std::string &category, const std::stri
     m_iDriveType = SOURCE_TYPE_VPATH;
   else if (StringUtils::StartsWithNoCase(strPath, "udf:"))
   {
-    m_iDriveType = SOURCE_TYPE_VIRTUAL_DVD;
+    m_iDriveType = SOURCE_TYPE_VIRTUAL_OPTICAL_DISC;
     strPath = "D:\\";
   }
   else if (URIUtils::IsISO9660(strPath))
-    m_iDriveType = SOURCE_TYPE_VIRTUAL_DVD;
+    m_iDriveType = SOURCE_TYPE_VIRTUAL_OPTICAL_DISC;
   else if (URIUtils::IsDVD(strPath))
-    m_iDriveType = SOURCE_TYPE_DVD;
+    m_iDriveType = SOURCE_TYPE_OPTICAL_DISC;
   else if (URIUtils::IsRemote(strPath))
     m_iDriveType = SOURCE_TYPE_REMOTE;
   else if (URIUtils::IsHD(strPath))
@@ -77,7 +77,7 @@ bool CMediaSource::operator==(const CMediaSource &share) const
   return true;
 }
 
-void AddOrReplace(VECSOURCES& sources, const VECSOURCES& extras)
+void AddOrReplace(std::vector<CMediaSource>& sources, const std::vector<CMediaSource>& extras)
 {
   unsigned int i;
   for( i=0;i<extras.size();++i )
@@ -96,7 +96,7 @@ void AddOrReplace(VECSOURCES& sources, const VECSOURCES& extras)
   }
 }
 
-void AddOrReplace(VECSOURCES& sources, const CMediaSource& source)
+void AddOrReplace(std::vector<CMediaSource>& sources, const CMediaSource& source)
 {
   unsigned int i;
   for( i=0;i<sources.size();++i )

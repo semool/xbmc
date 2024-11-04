@@ -573,13 +573,15 @@ if test "$platform_os" = "android"; then
     AC_MSG_ERROR("SDK path is required for android")
   fi
 
-  if [ ! test -f $use_sdk_path/tools/bin/sdkmanager ] && [ ! test -f $use_sdk_path/cmdline-tools/bin/sdkmanager ]; then
+  if [ ! test -f $use_sdk_path/tools/bin/sdkmanager ] && [ ! test -f $use_sdk_path/cmdline-tools/bin/sdkmanager ] && [ ! test -f $use_sdk_path/cmdline-tools/latest/bin/sdkmanager ]; then
     AC_MSG_ERROR(verify sdk path)
   fi
 
   if [ ! test -f $use_ndk_path/sources/android/native_app_glue/android_native_app_glue.h ]; then
     AC_MSG_ERROR(verify ndk path)
   fi
+
+  use_ndk_version=[`cat $use_ndk_path/source.properties | grep "Pkg.Revision" | cut -d'=' -f2 | awk '{print $1}'`]
 
   #not all sort versions support -V - probe it...
   SORT_PARAMS=""
@@ -681,6 +683,7 @@ if test "$platform_os" = "android"; then
 echo -e
   AC_SUBST(use_sdk_path)
   AC_SUBST(use_ndk_path)
+  AC_SUBST(use_ndk_version)
   AC_SUBST(use_ndk_api)
   AC_SUBST(build_tools_path)
 fi

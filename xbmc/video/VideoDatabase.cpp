@@ -4220,6 +4220,18 @@ CVideoInfoTag CVideoDatabase::GetDetailsByTypeAndId(VideoDbContentType type, int
   return {};
 }
 
+bool CVideoDatabase::GetStreamDetails(const std::string& filenameAndPath, CStreamDetails& details)
+{
+  CVideoInfoTag tag;
+  tag.m_iFileId = GetFileId(filenameAndPath);
+  if (GetStreamDetails(tag))
+  {
+    details = tag.m_streamDetails;
+    return true;
+  }
+  return false;
+}
+
 bool CVideoDatabase::GetStreamDetails(CFileItem& item)
 {
   // Note that this function (possibly) creates VideoInfoTags for items that don't have one yet!
@@ -10059,7 +10071,8 @@ void CVideoDatabase::CleanDatabase(CGUIDialogProgressBarHandle* handle,
     if (m_pDS2->num_rows() > 0)
     {
       std::string filesToTestForDelete;
-      VECSOURCES videoSources(*CMediaSourceSettings::GetInstance().GetSources("video"));
+      std::vector<CMediaSource> videoSources(
+          *CMediaSourceSettings::GetInstance().GetSources("video"));
       CServiceBroker::GetMediaManager().GetRemovableDrives(videoSources);
 
       int total = m_pDS2->num_rows();
@@ -10458,7 +10471,7 @@ std::vector<int> CVideoDatabase::CleanMediaType(const std::string &mediaType, co
                     parentPathIdField.c_str(),
                     table.c_str(), cleanableFileIDs.c_str());
 
-  VECSOURCES videoSources(*CMediaSourceSettings::GetInstance().GetSources("video"));
+  std::vector<CMediaSource> videoSources(*CMediaSourceSettings::GetInstance().GetSources("video"));
   CServiceBroker::GetMediaManager().GetRemovableDrives(videoSources);
 
   // map of parent path ID to boolean pair (if not exists and user choice)
@@ -11991,6 +12004,44 @@ void CVideoDatabase::EraseAllForPath(const std::string& path)
 
       sql = "DELETE FROM streamdetails WHERE idFile IN " + itemsToDelete;
       m_pDS->exec(sql);
+    }
+  }
+  catch (...)
+  {
+    CLog::Log(LOGERROR, "{} failed", __FUNCTION__);
+  }
+}
+
+void CVideoDatabase::EraseAllForFile(const std::string& fileNameAndPath)
+{
+  try
+  {
+    const int fileId{GetFileId(fileNameAndPath)};
+    if (fileId != -1)
+    {
+      std::string sql = PrepareSQL("DELETE FROM settings WHERE idFile = %i", fileId);
+      m_pDS->exec(sql);
+
+      sql = PrepareSQL("DELETE FROM bookmark WHERE idFile = %i", fileId);
+      m_pDS->exec(sql);
+
+      sql = PrepareSQL("DELETE FROM streamdetails WHERE idFile = %i", fileId);
+      m_pDS->exec(sql);
+
+      sql = PrepareSQL("DELETE FROM files WHERE idFile = %i", fileId);
+      m_pDS->exec(sql);
+
+      std::string path;
+      std::string fileName;
+      SplitPath(fileNameAndPath, path, fileName);
+      const int pathId{GetPathId(path)};
+      if (pathId != -1)
+      {
+        sql = PrepareSQL("DELETE FROM path WHERE idPath = %i "
+                         "AND NOT EXISTS (SELECT 1 FROM files WHERE files.idPath = %i)",
+                         pathId, pathId);
+        m_pDS->exec(sql);
+      }
     }
   }
   catch (...)

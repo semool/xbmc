@@ -22,6 +22,7 @@
 
 class CFileItem;
 class CFileItemList;
+class CStreamDetails;
 class CVideoSettings;
 class CGUIDialogProgress;
 class CGUIDialogProgressBarHandle;
@@ -685,6 +686,12 @@ public:
    */
   void EraseAllForPath(const std::string& path);
 
+  /**
+   * Erases all entries for the given file, including path entry if no longer used
+   * @param fileNameAndPath The name and path of the file to erase db entries for
+   */
+  void EraseAllForFile(const std::string& fileNameAndPath);
+
   bool GetStackTimes(const std::string &filePath, std::vector<uint64_t> &times);
   void SetStackTimes(const std::string &filePath, const std::vector<uint64_t> &times);
 
@@ -701,6 +708,7 @@ public:
   bool GetResumePoint(CVideoInfoTag& tag);
   bool GetStreamDetails(CFileItem& item);
   bool GetStreamDetails(CVideoInfoTag& tag);
+  bool GetStreamDetails(const std::string& filenameAndPath, CStreamDetails& details);
   bool GetDetailsByTypeAndId(CFileItem& item, VideoDbContentType type, int id);
   CVideoInfoTag GetDetailsByTypeAndId(VideoDbContentType type, int id);
 
