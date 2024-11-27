@@ -7620,7 +7620,17 @@ msgctxt "#13457"
 msgid "Prefer VAAPI render method"
 msgstr ""
 
-#empty strings from id 13458 to 13459
+#. This filter disables certain Android software decoders, leaving only hardware decoders available for video playback.
+#: system/settings/settings.xml
+msgctxt "#13458"
+msgid "Use Decoder filter"
+msgstr ""
+
+#. Description of setting with label #13458 "Use Decoder filter"
+#: system/settings/settings.xml
+msgctxt "#13459"
+msgid "Enable/Disable the filter that blocks certain Android software decoders. This filter is configurable via the [userdata]/decoderfilter.xml file."
+msgstr "
 
 #: system/settings/settings.xml
 msgctxt "#13460"
@@ -24448,7 +24458,19 @@ msgctxt "#40038"
 msgid "The default version of a movie with multiple versions cannot be added to another movie. Please move or remove the other versions first."
 msgstr ""
 
-#empty strings with id 40039 to 40199
+#. Remove video extra dialog title
+#: xbmc/video/dialogs/GUIDialogVideoManager.cpp
+msgctxt "#40039"
+msgid "Remove video extra"
+msgstr ""
+
+#. Remove video extra dialog text
+#: xbmc/video/dialogs/GUIDialogVideoManager.cpp
+msgctxt "#40040"
+msgid "Are you sure to remove the extra \"{0:s}\"?"
+msgstr ""
+
+#empty strings with id 40041 to 40199
 
 #. Select default video version setting
 #: system/settings/settings.xml

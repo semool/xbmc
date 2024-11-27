@@ -616,7 +616,14 @@ public:
 
   int UpdateDetailsForMovie(int idMovie, CVideoInfoTag& details, const std::map<std::string, std::string> &artwork, const std::set<std::string> &updatedDetails);
 
-  void DeleteMovie(int idMovie,
+  /*!
+   * \brief Remove a movie from the library.
+   * \param[in] idMovie The id of the movie
+   * \param[in] action Versions of the movie to be deleted
+   * \param[in] hashAction Preserve or invalidate the hash of the movie path
+   * \return operation success. true for success, false for failure
+   */
+  bool DeleteMovie(int idMovie,
                    DeleteMovieCascadeAction action = DeleteMovieCascadeAction::ALL_ASSETS,
                    DeleteMovieHashAction hashAction = DeleteMovieHashAction::HASH_DELETE);
   void DeleteTvShow(int idTvShow, bool bKeepId = false);
@@ -988,9 +995,16 @@ public:
     }
   }
 
-  void SetArtForItem(int mediaId, const MediaType &mediaType, const std::string &artType, const std::string &url);
-  void SetArtForItem(int mediaId, const MediaType &mediaType, const std::map<std::string, std::string> &art);
-  bool GetArtForItem(int mediaId, const MediaType &mediaType, std::map<std::string, std::string> &art);
+  bool SetArtForItem(int mediaId,
+                     const MediaType& mediaType,
+                     const std::string& artType,
+                     const std::string& url);
+  bool SetArtForItem(int mediaId,
+                     const MediaType& mediaType,
+                     const std::map<std::string, std::string>& art);
+  bool GetArtForItem(int mediaId,
+                     const MediaType& mediaType,
+                     std::map<std::string, std::string>& art);
   std::string GetArtForItem(int mediaId, const MediaType &mediaType, const std::string &artType);
 
   void UpdateArtForItem(int mediaId, const MediaType& mediaType);
@@ -1093,9 +1107,19 @@ public:
   int AddVideoVersionType(const std::string& typeVideoVersion,
                           VideoAssetTypeOwner owner,
                           VideoAssetType assetType);
-  void AddVideoAsset(VideoDbContentType itemType,
+  /*!
+   * \brief Create a new video asset from the provided item and type and attach it to an owner
+   * A file record is created for items with a path new to the database.
+   * \param[in] itemType Parent's type
+   * \param[in] dbId  Parent's id
+   * \param[in] idVideoAsset Video asset identifier / name
+   * \param[in] videoAssetType Type of the video asset
+   * \param[in] item Item to be made into a video asset
+   * \return Success status. true:success, false:failure
+   */
+  bool AddVideoAsset(VideoDbContentType itemType,
                      int dbId,
-                     int idVideoVersion,
+                     int idVideoAsset,
                      VideoAssetType videoAssetType,
                      CFileItem& item);
   bool DeleteVideoAsset(int idFile);
@@ -1103,7 +1127,7 @@ public:
   bool GetVideoVersionTypes(VideoDbContentType idContent,
                             VideoAssetType asset,
                             CFileItemList& items);
-  void SetVideoVersionDefaultArt(int dbId, int idFrom, VideoDbContentType type);
+  bool SetVideoVersionDefaultArt(int dbId, int idFrom, VideoDbContentType type);
   void InitializeVideoVersionTypeTable(int schemaVersion);
   void UpdateVideoVersionTypeTable();
   bool GetVideoVersionsNav(const std::string& strBaseDir,

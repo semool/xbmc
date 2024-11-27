@@ -55,6 +55,7 @@
 #include "dialogs/GUIDialogSimpleMenu.h"
 #include "events/EventLog.h"
 #include "events/NotificationEvent.h"
+#include "favourites/FavouritesService.h"
 #include "filesystem/Directory.h"
 #include "filesystem/DirectoryCache.h"
 #include "filesystem/DirectoryFactory.h"
@@ -1519,8 +1520,9 @@ void CApplication::OnApplicationMessage(ThreadMessage* pMsg)
   {
     XBMC_Event newEvent = {};
     newEvent.type = XBMC_VIDEORESIZE;
-    newEvent.resize.w = pMsg->param1;
-    newEvent.resize.h = pMsg->param2;
+    newEvent.resize.width = pMsg->param1;
+    newEvent.resize.height = pMsg->param2;
+    newEvent.resize.scale = 1.0;
     m_pAppPort->OnEvent(newEvent);
     CServiceBroker::GetGUI()->GetWindowManager().MarkDirty();
   }
@@ -2861,6 +2863,7 @@ bool CApplication::OnMessage(CGUIMessage& message)
   case GUI_MSG_PLAYBACK_STOPPED:
   {
     CServiceBroker::GetPVRManager().OnPlaybackStopped(*m_itemCurrentFile);
+    CServiceBroker::GetFavouritesService().OnPlaybackStopped(*m_itemCurrentFile);
 
     CVariant data(CVariant::VariantTypeObject);
     data["end"] = false;
@@ -2879,6 +2882,7 @@ bool CApplication::OnMessage(CGUIMessage& message)
   case GUI_MSG_PLAYBACK_ENDED:
   {
     CServiceBroker::GetPVRManager().OnPlaybackEnded(*m_itemCurrentFile);
+    CServiceBroker::GetFavouritesService().OnPlaybackEnded(*m_itemCurrentFile);
 
     CVariant data(CVariant::VariantTypeObject);
     data["end"] = true;

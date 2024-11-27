@@ -3693,21 +3693,24 @@ void CVideoDatabase::DeleteBookMarkForEpisode(const CVideoInfoTag& tag)
 }
 
 //********************************************************************************************************************************
-void CVideoDatabase::DeleteMovie(int idMovie,
+bool CVideoDatabase::DeleteMovie(int idMovie,
                                  DeleteMovieCascadeAction ca /* = ALL_ASSETS */,
                                  DeleteMovieHashAction hashAction /* = HASH_DELETE */)
 {
   if (idMovie < 0)
-    return;
+    return false;
+
+  if (nullptr == m_pDB)
+    return false;
+  if (nullptr == m_pDS)
+    return false;
+
+  const bool inTransaction{m_pDB->in_transaction()};
 
   try
   {
-    if (nullptr == m_pDB)
-      return;
-    if (nullptr == m_pDS)
-      return;
-
-    BeginTransaction();
+    if (!inTransaction)
+      BeginTransaction();
 
     const int idFile{GetDbId(PrepareSQL("SELECT idFile FROM movie WHERE idMovie=%i", idMovie))};
     DeleteStreamDetails(idFile);
@@ -3739,9 +3742,10 @@ void CVideoDatabase::DeleteMovie(int idMovie,
       {
         if (!DeleteVideoAsset(pDS->fv(0).get_asInt()))
         {
-          RollbackTransaction();
+          if (!inTransaction)
+            RollbackTransaction();
           pDS->close();
-          return;
+          return false;
         }
         pDS->next();
       }
@@ -3751,13 +3755,18 @@ void CVideoDatabase::DeleteMovie(int idMovie,
     //! @todo move this below CommitTransaction() once UPnP doesn't rely on this anymore
     AnnounceRemove(MediaTypeMovie, idMovie);
 
-    CommitTransaction();
+    if (!inTransaction)
+      CommitTransaction();
+
+    return true;
   }
   catch (...)
   {
     CLog::LogF(LOGERROR, "failed");
-    RollbackTransaction();
+    if (!inTransaction)
+      RollbackTransaction();
   }
+  return false;
 }
 
 void CVideoDatabase::DeleteTvShow(const std::string& strPath)
@@ -4971,24 +4980,31 @@ void CVideoDatabase::UpdateArtForItem(int mediaId, const MediaType& mediaType)
   AnnounceUpdate(mediaType, mediaId);
 }
 
-void CVideoDatabase::SetArtForItem(int mediaId, const MediaType &mediaType, const std::map<std::string, std::string> &art)
+bool CVideoDatabase::SetArtForItem(int mediaId,
+                                   const MediaType& mediaType,
+                                   const std::map<std::string, std::string>& art)
 {
-  for (const auto &i : art)
-    SetArtForItem(mediaId, mediaType, i.first, i.second);
+  for (const auto& i : art)
+    if (!SetArtForItem(mediaId, mediaType, i.first, i.second))
+      return false;
+  return true;
 }
 
-void CVideoDatabase::SetArtForItem(int mediaId, const MediaType &mediaType, const std::string &artType, const std::string &url)
+bool CVideoDatabase::SetArtForItem(int mediaId,
+                                   const MediaType& mediaType,
+                                   const std::string& artType,
+                                   const std::string& url)
 {
   try
   {
     if (nullptr == m_pDB)
-      return;
+      return false;
     if (nullptr == m_pDS)
-      return;
+      return false;
 
     // don't set <foo>.<bar> art types - these are derivative types from parent items
     if (artType.find('.') != std::string::npos)
-      return;
+      return true;
 
     std::string sql = PrepareSQL("SELECT art_id,url FROM art WHERE media_id=%i AND media_type='%s' AND type='%s'", mediaId, mediaType.c_str(), artType.c_str());
     m_pDS->query(sql);
@@ -5009,15 +5025,19 @@ void CVideoDatabase::SetArtForItem(int mediaId, const MediaType &mediaType, cons
       sql = PrepareSQL("INSERT INTO art(media_id, media_type, type, url) VALUES (%d, '%s', '%s', '%s')", mediaId, mediaType.c_str(), artType.c_str(), url.c_str());
       m_pDS->exec(sql);
     }
+    return true;
   }
   catch (...)
   {
     CLog::Log(LOGERROR, "{}({}, '{}', '{}', '{}') failed", __FUNCTION__, mediaId, mediaType,
               artType, url);
+    return false;
   }
 }
 
-bool CVideoDatabase::GetArtForItem(int mediaId, const MediaType &mediaType, std::map<std::string, std::string> &art)
+bool CVideoDatabase::GetArtForItem(int mediaId,
+                                   const MediaType& mediaType,
+                                   std::map<std::string, std::string>& art)
 {
   try
   {
@@ -5035,7 +5055,7 @@ bool CVideoDatabase::GetArtForItem(int mediaId, const MediaType &mediaType, std:
       m_pDS2->next();
     }
     m_pDS2->close();
-    return !art.empty();
+    return true;
   }
   catch (...)
   {
@@ -10687,7 +10707,7 @@ void CVideoDatabase::ExportToXML(const std::string &path, bool singleFile /* = t
       if (StringUtils::StartsWith(movie.m_strTrailer, movie.m_strPath))
         movie.m_strTrailer = movie.m_strTrailer.substr(movie.m_strPath.size());
       std::map<std::string, std::string> artwork;
-      if (GetArtForItem(movie.m_iDbId, movie.m_type, artwork) && singleFile)
+      if (GetArtForItem(movie.m_iDbId, movie.m_type, artwork) && !artwork.empty() && singleFile)
       {
         TiXmlElement additionalNode("art");
         for (const auto &i : artwork)
@@ -10805,8 +10825,8 @@ void CVideoDatabase::ExportToXML(const std::string &path, bool singleFile /* = t
           }
         }
 
-        std::string itemPath = URIUtils::AddFileToFolder(movieSetsDir,
-            CUtil::MakeLegalFileName(title, LEGAL_WIN32_COMPAT));
+        std::string itemPath = URIUtils::AddFileToFolder(
+            movieSetsDir, CUtil::MakeLegalFileName(title, LegalPath::WIN32_COMPAT));
         if (CDirectory::Exists(itemPath) || CDirectory::Create(itemPath))
         {
           std::map<std::string, std::string> artwork;
@@ -10840,7 +10860,7 @@ void CVideoDatabase::ExportToXML(const std::string &path, bool singleFile /* = t
     {
       CVideoInfoTag movie = GetDetailsForMusicVideo(m_pDS, VideoDbDetailsAll);
       std::map<std::string, std::string> artwork;
-      if (GetArtForItem(movie.m_iDbId, movie.m_type, artwork) && singleFile)
+      if (GetArtForItem(movie.m_iDbId, movie.m_type, artwork) && !artwork.empty() && singleFile)
       {
         TiXmlElement additionalNode("art");
         for (const auto &i : artwork)
@@ -10935,7 +10955,7 @@ void CVideoDatabase::ExportToXML(const std::string &path, bool singleFile /* = t
       GetTvShowSeasonArt(tvshow.m_iDbId, seasonArt);
 
       std::map<std::string, std::string> artwork;
-      if (GetArtForItem(tvshow.m_iDbId, tvshow.m_type, artwork) && singleFile)
+      if (GetArtForItem(tvshow.m_iDbId, tvshow.m_type, artwork) && !artwork.empty() && singleFile)
       {
         TiXmlElement additionalNode("art");
         for (const auto &i : artwork)
@@ -11043,10 +11063,11 @@ void CVideoDatabase::ExportToXML(const std::string &path, bool singleFile /* = t
       {
         CVideoInfoTag episode = GetDetailsForEpisode(pDS, VideoDbDetailsAll);
         std::map<std::string, std::string> artwork;
-        if (GetArtForItem(episode.m_iDbId, MediaTypeEpisode, artwork) && singleFile)
+        if (GetArtForItem(episode.m_iDbId, MediaTypeEpisode, artwork) && !artwork.empty() &&
+            singleFile)
         {
           TiXmlElement additionalNode("art");
-          for (const auto &i : artwork)
+          for (const auto& i : artwork)
             XMLUtils::SetString(&additionalNode, i.first.c_str(), i.second);
           episode.Save(pMain->LastChild(), "episodedetails", true, &additionalNode);
         }
@@ -11303,8 +11324,9 @@ void CVideoDatabase::ImportFromXML(const std::string &path)
         item.SetArt(artItem.GetArt());
         if (!item.GetVideoInfoTag()->m_set.title.empty())
         {
-          std::string setPath = URIUtils::AddFileToFolder(movieSetsDir,
-              CUtil::MakeLegalFileName(item.GetVideoInfoTag()->m_set.title, LEGAL_WIN32_COMPAT));
+          std::string setPath = URIUtils::AddFileToFolder(
+              movieSetsDir, CUtil::MakeLegalFileName(item.GetVideoInfoTag()->m_set.title,
+                                                     LegalPath::WIN32_COMPAT));
           if (CDirectory::Exists(setPath))
           {
             CGUIListItem::ArtMap setArt;
@@ -12588,55 +12610,79 @@ void CVideoDatabase::SetVideoVersion(int idFile, int idVideoVersion)
   }
 }
 
-void CVideoDatabase::AddVideoAsset(VideoDbContentType itemType,
+bool CVideoDatabase::AddVideoAsset(VideoDbContentType itemType,
                                    int dbId,
-                                   int idVideoVersion,
+                                   int idVideoAsset,
                                    VideoAssetType videoAssetType,
                                    CFileItem& item)
 {
   if (!m_pDB || !m_pDS)
-    return;
+    return false;
 
   assert(m_pDB->in_transaction() == false);
 
+  if (itemType != VideoDbContentType::MOVIES)
+    return false;
+
   MediaType mediaType;
-  if (itemType == VideoDbContentType::MOVIES)
-  {
-    mediaType = MediaTypeMovie;
-  }
-  else
-    return;
+  VideoContentTypeToString(itemType, mediaType);
 
   int idFile = AddFile(item.GetPath());
   if (idFile < 0)
-    return;
+    return false;
 
   try
   {
     BeginTransaction();
 
-    m_pDS->query(PrepareSQL("SELECT idFile FROM videoversion WHERE idFile = %i", idFile));
+    m_pDS->query(PrepareSQL(
+        "SELECT idMedia, media_type, itemType FROM videoversion WHERE idFile = %i", idFile));
 
     if (m_pDS->num_rows() == 0)
-      m_pDS->exec(PrepareSQL("INSERT INTO videoversion VALUES(%i, %i, '%s', %i, %i)", idFile, dbId,
-                             mediaType.c_str(), videoAssetType, idVideoVersion));
+    {
+      m_pDS->exec(
+          PrepareSQL("INSERT INTO videoversion (idFile, idMedia, media_type, itemType, idType) "
+                     "VALUES(%i, %i, '%s', %i, %i)",
+                     idFile, dbId, mediaType.c_str(), videoAssetType, idVideoAsset));
+    }
     else
-      m_pDS->exec(PrepareSQL("UPDATE videoversion SET idMedia = %i, media_type = '%s', itemType = "
-                             "%i, idType = %i WHERE idFile = %i",
-                             dbId, mediaType.c_str(), videoAssetType, idVideoVersion, idFile));
+    {
+      const int assetIdMedia = m_pDS->fv("idMedia").get_asInt();
+      const std::string assetMediaType = m_pDS->fv("media_type").get_asString();
+      const VideoAssetType assetType =
+          static_cast<VideoAssetType>(m_pDS->fv("itemType").get_asInt());
 
-    if (item.GetVideoInfoTag()->HasStreamDetails())
-      SetStreamDetailsForFileId(item.GetVideoInfoTag()->m_streamDetails, idFile);
+      if (assetIdMedia != dbId || assetMediaType != mediaType || assetType != videoAssetType)
+      {
+        m_pDS->exec(PrepareSQL("UPDATE videoversion "
+                               "SET idMedia = %i, media_type = '%s', itemType = %i, idType = %i "
+                               "WHERE idFile = %i",
+                               dbId, mediaType.c_str(), videoAssetType, idVideoAsset, idFile));
+      }
+    }
 
-    if (videoAssetType == VideoAssetType::VERSION)
-      SetVideoVersionDefaultArt(idFile, item.GetVideoInfoTag()->m_iDbId, itemType);
+    if (item.GetVideoInfoTag()->HasStreamDetails() &&
+        !SetStreamDetailsForFileId(item.GetVideoInfoTag()->m_streamDetails, idFile))
+    {
+      RollbackTransaction();
+      return false;
+    }
+
+    if (!SetArtForItem(idFile, MediaTypeVideoVersion, item.GetArt()))
+    {
+      RollbackTransaction();
+      return false;
+    }
 
     CommitTransaction();
+
+    return true;
   }
   catch (...)
   {
     CLog::LogF(LOGERROR, "failed for video {}", dbId);
     RollbackTransaction();
+    return false;
   }
 }
 
@@ -12797,7 +12843,7 @@ std::string CVideoDatabase::GetVideoVersionById(int id)
   return GetSingleValue(PrepareSQL("SELECT name FROM videoversiontype WHERE id=%i", id), m_pDS2);
 }
 
-void CVideoDatabase::SetVideoVersionDefaultArt(int dbId, int idFrom, VideoDbContentType type)
+bool CVideoDatabase::SetVideoVersionDefaultArt(int dbId, int idFrom, VideoDbContentType type)
 {
   MediaType mediaType;
   VideoContentTypeToString(type, mediaType);
@@ -12806,8 +12852,13 @@ void CVideoDatabase::SetVideoVersionDefaultArt(int dbId, int idFrom, VideoDbCont
   if (GetArtForItem(idFrom, mediaType, art))
   {
     for (const auto& it : art)
-      SetArtForItem(dbId, MediaTypeVideoVersion, it.first, it.second);
+      if (!SetArtForItem(dbId, MediaTypeVideoVersion, it.first, it.second))
+        return false;
   }
+  else
+    return false;
+
+  return true;
 }
 
 std::vector<std::string> CVideoDatabase::GetUsedImages(
