@@ -60,8 +60,7 @@ bool CSourcesDirectory::GetDirectory(const std::vector<CMediaSource>& sources, C
 
     std::string strIcon;
     // We have the real DVD-ROM, set icon on disktype
-    if (share.m_iDriveType == CMediaSource::SOURCE_TYPE_OPTICAL_DISC &&
-        share.m_strThumbnailImage.empty())
+    if (share.m_iDriveType == SourceType::OPTICAL_DISC && share.m_strThumbnailImage.empty())
     {
       CUtil::GetDVDDriveIcon( pItem->GetPath(), strIcon );
       // CDetectDVDMedia::SetNewDVDShareUrl() caches disc thumb as special://temp/dvdicon.tbn
@@ -94,7 +93,7 @@ bool CSourcesDirectory::GetDirectory(const std::vector<CMediaSource>& sources, C
 
     pItem->SetArt("icon", strIcon);
     if (share.m_iHasLock == LOCK_STATE_LOCKED &&
-        m_profileManager->GetMasterProfile().getLockMode() != LOCK_MODE_EVERYONE)
+        m_profileManager->GetMasterProfile().getLockMode() != LockMode::EVERYONE)
       pItem->SetOverlayImage(CGUIListItem::ICON_OVERLAY_LOCKED);
     else
       pItem->SetOverlayImage(CGUIListItem::ICON_OVERLAY_NONE);

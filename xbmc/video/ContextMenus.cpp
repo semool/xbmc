@@ -22,9 +22,8 @@
 #include "settings/Settings.h"
 #include "settings/SettingsComponent.h"
 #include "utils/ContentUtils.h"
-#include "utils/ExecString.h"
-#include "utils/StringUtils.h"
 #include "utils/URIUtils.h"
+#include "utils/guilib/GUIBuiltinsUtils.h"
 #include "video/VideoFileItemClassify.h"
 #include "video/VideoInfoTag.h"
 #include "video/VideoManagerTypes.h"
@@ -38,16 +37,17 @@
 #include <utility>
 
 using namespace KODI;
+using namespace KODI::UTILS::GUILIB;
 
 namespace CONTEXTMENU
 {
 
-CVideoInfo::CVideoInfo(MediaType mediaType)
+CVideoInfoBase::CVideoInfoBase(MediaType mediaType)
   : CStaticContextMenuAction(19033), m_mediaType(std::move(mediaType))
 {
 }
 
-bool CVideoInfo::IsVisible(const CFileItem& item) const
+bool CVideoInfoBase::IsVisible(const CFileItem& item) const
 {
   if (!item.HasVideoInfoTag())
     return false;
@@ -58,10 +58,22 @@ bool CVideoInfo::IsVisible(const CFileItem& item) const
   return item.GetVideoInfoTag()->m_type == m_mediaType;
 }
 
-bool CVideoInfo::Execute(const std::shared_ptr<CFileItem>& item) const
+bool CVideoInfoBase::Execute(const std::shared_ptr<CFileItem>& item) const
 {
   CGUIDialogVideoInfo::ShowFor(*item);
   return true;
+}
+
+bool CVideoInfo::IsVisible(const CFileItem& item) const
+{
+  if (CVideoInfoBase::IsVisible(item))
+    return true;
+
+  if (item.m_bIsFolder)
+    return false;
+
+  const auto* tag{item.GetVideoInfoTag()};
+  return tag && tag->m_type == MediaTypeNone && !tag->IsEmpty() && VIDEO::IsVideo(item);
 }
 
 bool CVideoRemoveResumePoint::IsVisible(const CFileItem& itemIn) const
@@ -140,7 +152,7 @@ bool CVideoMarkUnWatched::Execute(const std::shared_ptr<CFileItem>& item) const
 
 bool CVideoBrowse::IsVisible(const CFileItem& item) const
 {
-  return ((item.m_bIsFolder || item.IsFileFolder(EFILEFOLDER_MASK_ONBROWSE)) &&
+  return ((item.m_bIsFolder || item.IsFileFolder(FileFolderType::MASK_ONBROWSE)) &&
           VIDEO::UTILS::IsItemPlayable(item));
 }
 
@@ -157,8 +169,8 @@ bool CVideoBrowse::Execute(const std::shared_ptr<CFileItem>& item) const
   auto& windowMgr = CServiceBroker::GetGUI()->GetWindowManager();
 
   // For file directory browsing, we need item's dyn path, for everything else the path.
-  const std::string path{item->IsFileFolder(EFILEFOLDER_MASK_ONBROWSE) ? item->GetDynPath()
-                                                                       : item->GetPath()};
+  const std::string path{item->IsFileFolder(FileFolderType::MASK_ONBROWSE) ? item->GetDynPath()
+                                                                           : item->GetPath()};
 
   if (target == windowMgr.GetActiveWindow())
   {
@@ -175,19 +187,6 @@ bool CVideoBrowse::Execute(const std::shared_ptr<CFileItem>& item) const
 
 namespace
 {
-bool ExecuteAction(const CExecString& execute)
-{
-  const std::string& execStr{execute.GetExecString()};
-  if (!execStr.empty())
-  {
-    CGUIMessage message(GUI_MSG_EXECUTE, 0, 0);
-    message.SetStringParam(execStr);
-    CServiceBroker::GetGUI()->GetWindowManager().SendMessage(message);
-    return true;
-  }
-  return false;
-}
-
 class CVideoSelectActionProcessor : public VIDEO::GUILIB::CVideoSelectActionProcessorBase
 {
 public:
@@ -199,26 +198,25 @@ public:
 protected:
   bool OnPlayPartSelected(unsigned int part) override
   {
-    // part numbers are 1-based
-    ExecuteAction({"PlayMedia", *m_item, StringUtils::Format("playoffset={}", part - 1)});
+    CGUIBuiltinsUtils::ExecutePlayMediaPart(m_item, part);
     return true;
   }
 
   bool OnResumeSelected() override
   {
-    ExecuteAction({"PlayMedia", *m_item, "resume"});
+    CGUIBuiltinsUtils::ExecutePlayMediaTryResume(m_item);
     return true;
   }
 
   bool OnPlaySelected() override
   {
-    ExecuteAction({"PlayMedia", *m_item, "noresume"});
+    CGUIBuiltinsUtils::ExecutePlayMediaNoResume(m_item);
     return true;
   }
 
   bool OnQueueSelected() override
   {
-    ExecuteAction({"QueueMedia", *m_item, ""});
+    CGUIBuiltinsUtils::ExecuteQueueMedia(m_item);
     return true;
   }
 

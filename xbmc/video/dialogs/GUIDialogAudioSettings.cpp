@@ -161,7 +161,7 @@ bool CGUIDialogAudioSettings::Save()
   const std::shared_ptr<CProfileManager> profileManager = CServiceBroker::GetSettingsComponent()->GetProfileManager();
 
   if (!g_passwordManager.CheckSettingLevelLock(SettingLevel::Expert) &&
-      profileManager->GetMasterProfile().getLockMode() != LOCK_MODE_EVERYONE)
+      profileManager->GetMasterProfile().getLockMode() != LockMode::EVERYONE)
     return true;
 
   // prompt user if they are sure
@@ -282,7 +282,7 @@ void CGUIDialogAudioSettings::InitializeSettings()
     std::shared_ptr<CSettingNumber> settingAudioDelay = AddSlider(
         groupAudio, SETTING_AUDIO_DELAY, 297, SettingLevel::Basic, videoSettings.m_AudioDelay, 0,
         -CServiceBroker::GetSettingsComponent()->GetAdvancedSettings()->m_videoAudioDelayRange,
-        AUDIO_DELAY_STEP,
+        CServiceBroker::GetSettingsComponent()->GetAdvancedSettings()->m_videoAudioDelayStep,
         CServiceBroker::GetSettingsComponent()->GetAdvancedSettings()->m_videoAudioDelayRange, 297,
         usePopup);
     std::static_pointer_cast<CSettingControlSlider>(settingAudioDelay->GetControl())->SetFormatter(SettingFormatterDelay);

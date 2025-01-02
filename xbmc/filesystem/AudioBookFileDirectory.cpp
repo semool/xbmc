@@ -119,7 +119,7 @@ bool CAudioBookFileDirectory::GetDirectory(const CURL& url,
       {
         item->SetEndOffset(m_fctx->duration); // mka file
         if (item->GetEndOffset() < 0)
-          item->SetEndOffset(compare); // m4b file
+          item->SetEndOffset(CUtil::ConvertSecsToMilliSecs(compare)); // m4b file
       }
     }
     item->GetMusicInfoTag()->SetDuration(
@@ -152,7 +152,7 @@ bool CAudioBookFileDirectory::ContainsFiles(const CURL& url)
   m_fctx = avformat_alloc_context();
   m_fctx->pb = m_ioctx;
 
-  if (file.IoControl(IOCTRL_SEEK_POSSIBLE, nullptr) == 0)
+  if (file.IoControl(IOControl::SEEK_POSSIBLE, nullptr) == 0)
     m_ioctx->seekable = 0;
 
   m_ioctx->max_packet_size = 32768;

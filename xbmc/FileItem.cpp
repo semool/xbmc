@@ -18,9 +18,11 @@
 #include "filesystem/Directory.h"
 #include "filesystem/File.h"
 #include "filesystem/MultiPathDirectory.h"
+#include "filesystem/MusicDatabaseDirectory/DirectoryNode.h"
 #include "filesystem/MusicDatabaseDirectory/QueryParams.h"
 #include "filesystem/StackDirectory.h"
 #include "filesystem/VideoDatabaseDirectory.h"
+#include "filesystem/VideoDatabaseDirectory/DirectoryNode.h"
 #include "filesystem/VideoDatabaseDirectory/QueryParams.h"
 #include "games/GameUtils.h"
 #include "games/tags/GameInfoTag.h"
@@ -565,13 +567,13 @@ void CFileItem::Initialize()
   m_dwSize = 0;
   m_bIsParentFolder = false;
   m_bIsShareOrDrive = false;
-  m_iDriveType = CMediaSource::SOURCE_TYPE_UNKNOWN;
+  m_iDriveType = SourceType::UNKNOWN;
   m_lStartOffset = 0;
   m_lStartPartNumber = 1;
   m_lEndOffset = 0;
   m_iprogramCount = 0;
   m_idepth = 1;
-  m_iLockMode = LOCK_MODE_EVERYONE;
+  m_iLockMode = LockMode::EVERYONE;
   m_iBadPwdCount = 0;
   m_iHasLock = LOCK_STATE_NO_LOCK;
   m_bCanQueue = true;
@@ -618,7 +620,6 @@ void CFileItem::Reset()
   SetInvalid();
 }
 
-// do not archive dynamic path
 void CFileItem::Archive(CArchive& ar)
 {
   CGUIListItem::Archive(ar);
@@ -628,8 +629,9 @@ void CFileItem::Archive(CArchive& ar)
     ar << m_bIsParentFolder;
     ar << m_bLabelPreformatted;
     ar << m_strPath;
+    ar << m_strDynPath;
     ar << m_bIsShareOrDrive;
-    ar << m_iDriveType;
+    ar << static_cast<int>(m_iDriveType);
     ar << m_dateTime;
     ar << m_dwSize;
     ar << m_strDVDLabel;
@@ -639,7 +641,7 @@ void CFileItem::Archive(CArchive& ar)
     ar << m_lStartOffset;
     ar << m_lStartPartNumber;
     ar << m_lEndOffset;
-    ar << m_iLockMode;
+    ar << static_cast<int>(m_iLockMode);
     ar << m_strLockCode;
     ar << m_iBadPwdCount;
 
@@ -683,8 +685,11 @@ void CFileItem::Archive(CArchive& ar)
     ar >> m_bIsParentFolder;
     ar >> m_bLabelPreformatted;
     ar >> m_strPath;
+    ar >> m_strDynPath;
     ar >> m_bIsShareOrDrive;
-    ar >> m_iDriveType;
+    int dtype;
+    ar >> dtype;
+    m_iDriveType = static_cast<SourceType>(dtype);
     ar >> m_dateTime;
     ar >> m_dwSize;
     ar >> m_strDVDLabel;
@@ -696,7 +701,7 @@ void CFileItem::Archive(CArchive& ar)
     ar >> m_lEndOffset;
     int temp;
     ar >> temp;
-    m_iLockMode = (LockType)temp;
+    m_iLockMode = static_cast<LockMode>(temp);
     ar >> m_strLockCode;
     ar >> m_iBadPwdCount;
 
@@ -772,7 +777,7 @@ void CFileItem::ToSortable(SortItem &sortable, Field field) const
       sortable[FieldSize] = m_dwSize;
       break;
     case FieldDriveType:
-      sortable[FieldDriveType] = m_iDriveType;
+      sortable[FieldDriveType] = static_cast<int>(m_iDriveType);
       break;
     case FieldStartOffset:
       sortable[FieldStartOffset] = m_lStartOffset;
@@ -991,19 +996,19 @@ bool CFileItem::IsPicture() const
   return false;
 }
 
-bool CFileItem::IsFileFolder(EFileFolderType types) const
+bool CFileItem::IsFileFolder(FileFolderType types) const
 {
-  EFileFolderType always_type = EFILEFOLDER_TYPE_ALWAYS;
+  FileFolderType always_type = FileFolderType::ALWAYS;
 
   /* internet streams are not directly expanded */
   if (NETWORK::IsInternetStream(*this))
-    always_type = EFILEFOLDER_TYPE_ONCLICK;
+    always_type = FileFolderType::ONCLICK;
 
   // strm files are not browsable
-  if (IsType(".strm") && (types & EFILEFOLDER_TYPE_ONBROWSE))
+  if (IsType(".strm") && (static_cast<int>(types) & static_cast<int>(FileFolderType::ONBROWSE)))
     return false;
 
-  if (types & always_type)
+  if (static_cast<int>(types) & static_cast<int>(always_type))
   {
     if (PLAYLIST::IsSmartPlayList(*this) ||
         (PLAYLIST::IsPlayList(*this) &&
@@ -1022,7 +1027,7 @@ bool CFileItem::IsFileFolder(EFileFolderType types) const
       CServiceBroker::GetFileExtensionProvider().CanOperateExtension(m_strPath))
     return true;
 
-  if(types & EFILEFOLDER_TYPE_ONBROWSE)
+  if (static_cast<int>(types) & static_cast<int>(FileFolderType::ONBROWSE))
   {
     if ((PLAYLIST::IsPlayList(*this) &&
          !CServiceBroker::GetSettingsComponent()->GetAdvancedSettings()->m_playlistAsFolders) ||
@@ -1156,12 +1161,12 @@ bool CFileItem::IsBluray() const
 
 bool CFileItem::IsDVD() const
 {
-  return URIUtils::IsDVD(m_strPath) || m_iDriveType == CMediaSource::SOURCE_TYPE_OPTICAL_DISC;
+  return URIUtils::IsDVD(m_strPath) || m_iDriveType == SourceType::OPTICAL_DISC;
 }
 
 bool CFileItem::IsOnDVD() const
 {
-  return URIUtils::IsOnDVD(m_strPath) || m_iDriveType == CMediaSource::SOURCE_TYPE_OPTICAL_DISC;
+  return URIUtils::IsOnDVD(m_strPath) || m_iDriveType == SourceType::OPTICAL_DISC;
 }
 
 bool CFileItem::IsNfs() const
@@ -1206,7 +1211,7 @@ bool CFileItem::IsVirtualDirectoryRoot() const
 
 bool CFileItem::IsRemovable() const
 {
-  return IsOnDVD() || MUSIC::IsCDDA(*this) || m_iDriveType == CMediaSource::SOURCE_TYPE_REMOVABLE;
+  return IsOnDVD() || MUSIC::IsCDDA(*this) || m_iDriveType == SourceType::REMOVABLE;
 }
 
 bool CFileItem::IsReadOnly() const
@@ -2288,6 +2293,18 @@ bool CFileItem::LoadDetails()
         return true;
       }
     }
+    return false;
+  }
+
+  if (GetProperty("IsVideoFolder").asBoolean(false))
+  {
+    const std::shared_ptr<CFileItem> loadedItem{VIDEO::UTILS::LoadVideoFilesFolderInfo(*this)};
+    if (loadedItem)
+    {
+      UpdateInfo(*loadedItem);
+      return true;
+    }
+    CLog::LogF(LOGERROR, "Error filling video files folder item details (path={})", GetPath());
     return false;
   }
 

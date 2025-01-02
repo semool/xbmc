@@ -150,8 +150,8 @@ bool CDVDInputStreamNavigator::Open()
   if (m_item.IsDiscImage())
   {
     // if dvd image file (ISO or alike) open using libdvdnav stream callback functions
-    m_pstream = std::make_unique<CDVDInputStreamFile>(
-        m_item, XFILE::READ_TRUNCATED | XFILE::READ_BITRATE | XFILE::READ_CHUNKED);
+    m_pstream =
+        std::make_unique<CDVDInputStreamFile>(m_item, XFILE::READ_TRUNCATED | XFILE::READ_BITRATE);
 #if DVDNAV_VERSION >= 60100
     if (!m_pstream->Open() || m_dll.dvdnav_open_stream2(&m_dvdnav, m_pstream.get(), &loggerCallback,
                                                         &m_dvdnav_stream_cb) != DVDNAV_STATUS_OK)
@@ -362,7 +362,7 @@ int CDVDInputStreamNavigator::Read(uint8_t* buf, int buf_size)
 // not working yet, but it is the recommended way for seeking
 int64_t CDVDInputStreamNavigator::Seek(int64_t offset, int whence)
 {
-  if(whence == SEEK_POSSIBLE)
+  if (whence == DVDSTREAM_SEEK_POSSIBLE)
     return 0;
   else
     return -1;

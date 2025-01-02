@@ -6290,7 +6290,25 @@ msgctxt "#12395"
 msgid "Battery level"
 msgstr ""
 
-#empty strings from id 12396 to 12599
+#. Label of button in the System Info screen asking for donations. "Thank you!" is used to convey gratitude to the users of our beloved software.
+#: addons/skin.estuary/xml/SettingsSystemInfo.xml
+msgctxt "#12396"
+msgid "Thank you!"
+msgstr ""
+
+#. Label of text box asking for donations
+#: addons/skin.estuary/xml/SettingsSystemInfo.xml
+msgctxt "#12397"
+msgid "Kodi is brought to you with love from the Kodi Foundation, a 501(c)(3) nonprofit organization. Thank you for using our software!"
+msgstr ""
+
+#. URL for donations. Do not translate.
+#: addons/skin.estuary/xml/SettingsSystemInfo.xml
+msgctxt "#12398"
+msgid "kodi.tv/donate"
+msgstr ""
+
+#empty strings from id 12399 to 12599
 
 #: xbmc/guilib/WindowIDs.h
 msgctxt "#12600"
@@ -7459,10 +7477,7 @@ msgctxt "#13427"
 msgid "Allow hardware acceleration - DXVA2"
 msgstr ""
 
-#: system/settings/settings.xml
-msgctxt "#13428"
-msgid "Allow hardware acceleration - CrystalHD"
-msgstr ""
+#empty string with id 13428
 
 #: system/settings/settings.xml
 msgctxt "#13429"
@@ -7630,7 +7645,7 @@ msgstr ""
 #: system/settings/settings.xml
 msgctxt "#13459"
 msgid "Enable/Disable the filter that blocks certain Android software decoders. This filter is configurable via the [userdata]/decoderfilter.xml file."
-msgstr "
+msgstr ""
 
 #: system/settings/settings.xml
 msgctxt "#13460"
@@ -19042,11 +19057,7 @@ msgctxt "#35254"
 msgid "Save the game automatically during game play, if supported. Resume playing where you left off."
 msgstr ""
 
-#. Label for showing which emulator the game was saved with
-#: system/settings/settings.xml
-msgctxt "#35255"
-msgid "Saved with:"
-msgstr ""
+#empty string with id 35255
 
 #. Error message when a game client fails to install when a game is being launched
 #: xbmc/games/dialogs/GUIDialogSelectGameClient.cpp
@@ -19141,7 +19152,13 @@ msgctxt "#35270"
 msgid "Your account is not verified. Please check your email to complete your sign up."
 msgstr ""
 
-#empty strings from id 35271 to 35504
+#. Error message shown when an OpenGL game is played, as OpenGL is not currently supported
+#: xbmc/games/addons/GameClient.cpp
+msgctxt "#35271"
+msgid "This game requires OpenGL support for 3D rendering. OpenGL support is still under development."
+msgstr ""
+
+#empty strings from id 35272 to 35504
 
 #. connection state "host unreachable"
 #: xbmc/pvr/addons/PVRClients.cpp
@@ -19823,11 +19840,7 @@ msgctxt "#36158"
 msgid "Enable DXVA2 hardware decoding of video files."
 msgstr ""
 
-#. Description of setting with label #13428 "Allow hardware acceleration (CrystalHD)"
-#: system/settings/settings.xml
-msgctxt "#36159"
-msgid "Enable CrystalHD decoding of video files."
-msgstr ""
+#empty string with id 36159
 
 #. Description of setting with label #13429 "Allow hardware acceleration (VDADecoder)"
 #: system/settings/settings.xml
@@ -24217,7 +24230,19 @@ msgctxt "#39203"
 msgid "Adjust the space between lines of text. Setting a value too low may cause boxes to overlap when the \"Background type\" setting is used."
 msgstr ""
 
-#empty strings from id 39204 to 39999
+#. Setting to make CC subtitles for hearing impaired only
+#: system/settings/settings.xml
+msgctxt "#39204"
+msgid "Set CC subtitles only for the hearing impaired"
+msgstr ""
+
+#. Help text for setting of label #39204
+#: system/settings/settings.xml
+msgctxt "#39205"
+msgid "By enabling it, CC subtitles will be labeled for the hearing impaired; this will affect the automatic selection of subtitles, which unless otherwise specified will not be displayed by default."
+msgstr ""
+
+#empty strings from id 39206 to 39999
 
 # 40000 to 40800 are reserved for Video Versions feature
 

@@ -19,6 +19,7 @@
 #include "dialogs/GUIDialogFileBrowser.h"
 #include "dialogs/GUIDialogProgress.h"
 #include "filesystem/Directory.h"
+#include "filesystem/MusicDatabaseDirectory/DirectoryNode.h"
 #include "filesystem/MusicDatabaseDirectory/QueryParams.h"
 #include "guilib/GUIComponent.h"
 #include "guilib/GUIWindowManager.h"
@@ -240,7 +241,8 @@ public:
       if (dlgProgress->IsCanceled())
         return false;
       CMusicInfoScanner scanner;
-      if (scanner.UpdateArtistInfo(m_artist, scraper, true, dlgProgress) != CInfoScanner::INFO_ADDED)
+      if (scanner.UpdateArtistInfo(m_artist, scraper, true, dlgProgress) !=
+          CInfoScanner::InfoRet::ADDED)
         return false;
       else
         // Tell info dialog, so can show message
@@ -270,7 +272,8 @@ public:
       if (dlgProgress->IsCanceled())
         return false;
       CMusicInfoScanner scanner;
-      if (scanner.UpdateAlbumInfo(m_album, scraper, true, GetProgressDialog()) != CInfoScanner::INFO_ADDED)
+      if (scanner.UpdateAlbumInfo(m_album, scraper, true, GetProgressDialog()) !=
+          CInfoScanner::InfoRet::ADDED)
         return false;
       else
         // Tell info dialog, so can show message

@@ -13,7 +13,8 @@
  \brief
  */
 
-#include "LockType.h"
+#include "LockMode.h"
+#include "SourceType.h"
 #include "XBDateTime.h"
 #include "guilib/GUIListItem.h"
 #include "threads/CriticalSection.h"
@@ -28,6 +29,7 @@
 #include <utility>
 #include <vector>
 
+class CMediaSource;
 enum class VideoDbContentType;
 
 namespace ADDON
@@ -79,21 +81,17 @@ typedef std::shared_ptr<const IEvent> EventPtr;
 /* special startoffset used to indicate that we wish to resume */
 #define STARTOFFSET_RESUME (-1)
 
-class CMediaSource;
-
 class CBookmark;
 
-enum EFileFolderType {
-  EFILEFOLDER_TYPE_ALWAYS     = 1<<0,
-  EFILEFOLDER_TYPE_ONCLICK    = 1<<1,
-  EFILEFOLDER_TYPE_ONBROWSE   = 1<<2,
+enum class FileFolderType
+{
+  ALWAYS = 1 << 0,
+  ONCLICK = 1 << 1,
+  ONBROWSE = 1 << 2,
 
-  EFILEFOLDER_MASK_ALL        = 0xff,
-  EFILEFOLDER_MASK_ONCLICK    = EFILEFOLDER_TYPE_ALWAYS
-                              | EFILEFOLDER_TYPE_ONCLICK,
-  EFILEFOLDER_MASK_ONBROWSE   = EFILEFOLDER_TYPE_ALWAYS
-                              | EFILEFOLDER_TYPE_ONCLICK
-                              | EFILEFOLDER_TYPE_ONBROWSE,
+  MASK_ALL = 0xff,
+  MASK_ONCLICK = ALWAYS | ONCLICK,
+  MASK_ONBROWSE = ALWAYS | ONCLICK | ONBROWSE,
 };
 
 /*!
@@ -214,7 +212,7 @@ public:
   bool CanQueue() const;
   void SetCanQueue(bool bYesNo);
   bool IsParentFolder() const;
-  bool IsFileFolder(EFileFolderType types = EFILEFOLDER_MASK_ALL) const;
+  bool IsFileFolder(FileFolderType types = FileFolderType::MASK_ALL) const;
   bool IsRemovable() const;
   bool IsPVR() const;
   bool IsLiveTV() const;
@@ -541,7 +539,9 @@ public:
   void SetFromSong(const CSong &song);
 
   bool m_bIsShareOrDrive;    ///< is this a root share/drive
-  int m_iDriveType;     ///< If \e m_bIsShareOrDrive is \e true, use to get the share type. Types see: CMediaSource::m_iDriveType
+  /// If \e m_bIsShareOrDrive is \e true, use to get the share type.
+  /// Types see: CMediaSource::m_iDriveType
+  SourceType m_iDriveType;
   CDateTime m_dateTime;             ///< file creation date & time
   int64_t m_dwSize;             ///< file size (0 for folders)
   std::string m_strDVDLabel;
@@ -549,7 +549,7 @@ public:
   int m_iprogramCount;
   int m_idepth;
   int m_lStartPartNumber;
-  LockType m_iLockMode;
+  LockMode m_iLockMode;
   std::string m_strLockCode;
   int m_iHasLock; // 0 - no lock 1 - lock, but unlocked 2 - locked
   int m_iBadPwdCount;

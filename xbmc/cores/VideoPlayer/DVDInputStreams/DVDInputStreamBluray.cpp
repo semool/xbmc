@@ -1003,7 +1003,7 @@ int64_t CDVDInputStreamBluray::Seek(int64_t offset, int whence)
 
   return offset;
 #else
-  if(whence == SEEK_POSSIBLE)
+  if (whence == DVDSTREAM_SEEK_POSSIBLE)
     return 0;
   return -1;
 #endif
@@ -1244,8 +1244,8 @@ void CDVDInputStreamBluray::SetupPlayerSettings()
 
 bool CDVDInputStreamBluray::OpenStream(CFileItem &item)
 {
-  m_pstream = std::make_unique<CDVDInputStreamFile>(item, READ_TRUNCATED | READ_BITRATE |
-                                                              READ_CHUNKED | READ_NO_CACHE);
+  m_pstream =
+      std::make_unique<CDVDInputStreamFile>(item, READ_TRUNCATED | READ_BITRATE | READ_NO_CACHE);
 
   if (!m_pstream->Open())
   {

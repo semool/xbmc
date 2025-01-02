@@ -14,8 +14,6 @@
 #include "addons/AddonManager.h"
 #include "favourites/FavouritesService.h"
 #include "filesystem/Directory.h"
-#include "guilib/GUIComponent.h"
-#include "guilib/GUIWindowManager.h"
 #include "guilib/LocalizeStrings.h"
 #include "interfaces/AnnouncementManager.h"
 #include "music/MusicFileItemClassify.h"
@@ -33,6 +31,7 @@
 #include "utils/URIUtils.h"
 #include "utils/Variant.h"
 #include "utils/XMLUtils.h"
+#include "utils/guilib/GUIBuiltinsUtils.h"
 #include "utils/guilib/GUIContentUtils.h"
 #include "utils/log.h"
 #include "video/VideoFileItemClassify.h"
@@ -50,6 +49,7 @@
 using namespace XFILE;
 using namespace KODI;
 using namespace KODI::MESSAGING;
+using namespace KODI::UTILS::GUILIB;
 using namespace PVR;
 
 class CDirectoryJob : public CJob
@@ -455,23 +455,6 @@ std::string CDirectoryProvider::GetTarget(const CFileItem& item) const
 
 namespace
 {
-bool ExecuteAction(const std::string& execute)
-{
-  if (!execute.empty())
-  {
-    CGUIMessage message(GUI_MSG_EXECUTE, 0, 0);
-    message.SetStringParam(execute);
-    CServiceBroker::GetGUI()->GetWindowManager().SendMessage(message);
-    return true;
-  }
-  return false;
-}
-
-bool ExecuteAction(const CExecString& execute)
-{
-  return ExecuteAction(execute.GetExecString());
-}
-
 class CVideoSelectActionProcessor : public VIDEO::GUILIB::CVideoSelectActionProcessorBase
 {
 public:
@@ -483,26 +466,25 @@ public:
 protected:
   bool OnPlayPartSelected(unsigned int part) override
   {
-    // part numbers are 1-based
-    ExecuteAction({"PlayMedia", *m_item, StringUtils::Format("playoffset={}", part - 1)});
+    CGUIBuiltinsUtils::ExecutePlayMediaPart(m_item, part);
     return true;
   }
 
   bool OnResumeSelected() override
   {
-    ExecuteAction({"PlayMedia", *m_item, "resume"});
+    CGUIBuiltinsUtils::ExecutePlayMediaTryResume(m_item);
     return true;
   }
 
   bool OnPlaySelected() override
   {
-    ExecuteAction({"PlayMedia", *m_item, "noresume"});
+    CGUIBuiltinsUtils::ExecutePlayMediaNoResume(m_item);
     return true;
   }
 
   bool OnQueueSelected() override
   {
-    ExecuteAction({"QueueMedia", *m_item, ""});
+    CGUIBuiltinsUtils::ExecuteQueueMedia(m_item);
     return true;
   }
 
@@ -533,13 +515,13 @@ public:
 protected:
   bool OnResumeSelected() override
   {
-    ExecuteAction({"PlayMedia", *m_item, "resume"});
+    CGUIBuiltinsUtils::ExecutePlayMediaTryResume(m_item);
     return true;
   }
 
   bool OnPlaySelected() override
   {
-    ExecuteAction({"PlayMedia", *m_item, "noresume"});
+    CGUIBuiltinsUtils::ExecutePlayMediaNoResume(m_item);
     return true;
   }
 };
@@ -547,27 +529,25 @@ protected:
 
 bool CDirectoryProvider::OnClick(const std::shared_ptr<CGUIListItem>& item)
 {
-  CFileItem targetItem{*std::static_pointer_cast<CFileItem>(item)};
+  std::shared_ptr<CFileItem> targetItem{std::static_pointer_cast<CFileItem>(item)};
 
-  if (targetItem.IsFavourite())
+  if (targetItem->IsFavourite())
   {
-    const auto target{CServiceBroker::GetFavouritesService().ResolveFavourite(targetItem)};
-    if (!target)
+    targetItem = CServiceBroker::GetFavouritesService().ResolveFavourite(*targetItem);
+    if (!targetItem)
       return false;
-
-    targetItem = *target;
   }
 
-  const CExecString exec{targetItem, GetTarget(targetItem)};
+  const CExecString exec{*targetItem, GetTarget(*targetItem)};
   const bool isPlayMedia{exec.GetFunction() == "playmedia"};
 
   // video select action setting is for files only, except exec func is playmedia...
-  if (targetItem.HasVideoInfoTag() && (!targetItem.m_bIsFolder || isPlayMedia))
+  if (targetItem->HasVideoInfoTag() && (!targetItem->m_bIsFolder || isPlayMedia))
   {
     // play the given/default video version, even if multiple versions are available
-    targetItem.SetProperty("has_resolved_video_asset", true);
+    targetItem->SetProperty("has_resolved_video_asset", true);
 
-    CVideoSelectActionProcessor proc{*this, std::make_shared<CFileItem>(targetItem)};
+    CVideoSelectActionProcessor proc{*this, targetItem};
     if (proc.ProcessDefaultAction())
       return true;
   }
@@ -578,43 +558,41 @@ bool CDirectoryProvider::OnClick(const std::shared_ptr<CGUIListItem>& item)
   if (fileItem.HasProperty("node.target_url"))
     fileItem.SetPath(fileItem.GetProperty("node.target_url").asString());
 
-  return ExecuteAction({fileItem, GetTarget(fileItem)});
+  return CGUIBuiltinsUtils::ExecuteAction({fileItem, GetTarget(fileItem)}, targetItem);
 }
 
 bool CDirectoryProvider::OnPlay(const std::shared_ptr<CGUIListItem>& item)
 {
-  CFileItem targetItem{*std::static_pointer_cast<CFileItem>(item)};
+  std::shared_ptr<CFileItem> targetItem{std::static_pointer_cast<CFileItem>(item)};
 
-  if (targetItem.IsFavourite())
+  if (targetItem->IsFavourite())
   {
-    const auto target{CServiceBroker::GetFavouritesService().ResolveFavourite(targetItem)};
-    if (!target)
+    targetItem = CServiceBroker::GetFavouritesService().ResolveFavourite(*targetItem);
+    if (!targetItem)
       return false;
-
-    targetItem = *target;
   }
 
   // video play action setting is for files and folders...
-  if (targetItem.HasVideoInfoTag() ||
-      (targetItem.m_bIsFolder && VIDEO::UTILS::IsItemPlayable(targetItem)))
+  if (targetItem->HasVideoInfoTag() ||
+      (targetItem->m_bIsFolder && VIDEO::UTILS::IsItemPlayable(*targetItem)))
   {
-    CVideoPlayActionProcessor proc{std::make_shared<CFileItem>(targetItem)};
+    CVideoPlayActionProcessor proc{targetItem};
     if (proc.ProcessDefaultAction())
       return true;
   }
 
-  if (CPlayerUtils::IsItemPlayable(targetItem))
+  if (CPlayerUtils::IsItemPlayable(*targetItem))
   {
-    const CExecString exec{targetItem, GetTarget(targetItem)};
+    const CExecString exec{*targetItem, GetTarget(*targetItem)};
     if (exec.GetFunction() == "playmedia")
     {
       // exec as is
-      return ExecuteAction(exec);
+      return CGUIBuiltinsUtils::ExecuteAction(exec, targetItem);
     }
     else
     {
       // build a playmedia execute string for given target and exec this
-      return ExecuteAction({"PlayMedia", targetItem, ""});
+      return CGUIBuiltinsUtils::ExecutePlayMediaAskResume(targetItem);
     }
   }
   return true;
@@ -626,7 +604,7 @@ bool CDirectoryProvider::OnInfo(const std::shared_ptr<CFileItem>& fileItem)
                             ? CServiceBroker::GetFavouritesService().ResolveFavourite(*fileItem)
                             : fileItem};
 
-  return UTILS::GUILIB::CGUIContentUtils::ShowInfoForItem(*targetItem);
+  return CGUIContentUtils::ShowInfoForItem(*targetItem);
 }
 
 bool CDirectoryProvider::OnInfo(const std::shared_ptr<CGUIListItem>& item)

@@ -48,8 +48,6 @@ bool CDVDInputStreamFile::Open()
   // If this file is audio and/or video (= not a subtitle) flag to caller
   if (!VIDEO::IsSubtitle(m_item))
     flags |= READ_AUDIO_VIDEO;
-  else
-    flags |= READ_NO_BUFFER; // disable CFileStreamBuffer for subtitles
 
   std::string content = m_item.GetMimeType();
 
@@ -109,8 +107,8 @@ int64_t CDVDInputStreamFile::Seek(int64_t offset, int whence)
 {
   if(!m_pFile) return -1;
 
-  if(whence == SEEK_POSSIBLE)
-    return m_pFile->IoControl(IOCTRL_SEEK_POSSIBLE, NULL);
+  if (whence == DVDSTREAM_SEEK_POSSIBLE)
+    return m_pFile->IoControl(IOControl::SEEK_POSSIBLE, nullptr);
 
   int64_t ret = m_pFile->Seek(offset, whence);
 
@@ -129,7 +127,7 @@ int64_t CDVDInputStreamFile::GetLength()
 
 bool CDVDInputStreamFile::GetCacheStatus(XFILE::SCacheStatus *status)
 {
-  if(m_pFile && m_pFile->IoControl(IOCTRL_CACHE_STATUS, status) >= 0)
+  if (m_pFile && m_pFile->IoControl(IOControl::CACHE_STATUS, status) >= 0)
     return true;
   else
     return false;
@@ -162,7 +160,7 @@ void CDVDInputStreamFile::SetReadRate(uint32_t rate)
   // Increase requested rate by 10%:
   uint32_t maxrate = static_cast<uint32_t>(1.1 * rate);
 
-  if(m_pFile->IoControl(IOCTRL_CACHE_SETRATE, &maxrate) >= 0)
+  if (m_pFile->IoControl(IOControl::CACHE_SETRATE, &maxrate) >= 0)
     CLog::Log(LOGDEBUG,
               "CDVDInputStreamFile::SetReadRate - set cache throttle rate to {} bytes per second",
               maxrate);

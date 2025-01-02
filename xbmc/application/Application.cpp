@@ -702,7 +702,7 @@ bool CApplication::Initialize()
     CServiceBroker::GetGUI()->GetWindowManager().ActivateWindow(WINDOW_SPLASH);
 
     if (settings->GetBool(CSettings::SETTING_MASTERLOCK_STARTUPLOCK) &&
-        profileManager->GetMasterProfile().getLockMode() != LOCK_MODE_EVERYONE &&
+        profileManager->GetMasterProfile().getLockMode() != LockMode::EVERYONE &&
         !profileManager->GetMasterProfile().getLockCode().empty())
     {
       g_passwordManager.CheckStartUpLock();
@@ -3056,7 +3056,7 @@ bool CApplication::ExecuteXBMCAction(std::string actionStr,
   {
     if (!CBuiltins::GetInstance().IsSystemPowerdownCommand(actionStr) ||
         CServiceBroker::GetPVRManager().Get<PVR::GUI::PowerManagement>().CanSystemPowerdown())
-      CBuiltins::GetInstance().Execute(actionStr);
+      CBuiltins::GetInstance().Execute(actionStr, item);
   }
   else
   {

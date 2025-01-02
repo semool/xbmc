@@ -16,9 +16,6 @@ namespace XFILE
 /* indicate that caller can handle truncated reads, where function returns before entire buffer has been filled */
 static const unsigned int READ_TRUNCATED = 0x01;
 
-/* indicate that that caller support read in the minimum defined chunk size, this disables internal cache then */
-static const unsigned int READ_CHUNKED = 0x02;
-
 /* use cache to access this file */
 static const unsigned int READ_CACHED = 0x04;
 
@@ -60,23 +57,24 @@ struct SCacheStatus
   uint32_t lowrate; /**< low speed read rate (bytes/second) (if any, else 0) */
 };
 
-enum CACHE_BUFFER_MODES
+enum class CacheBufferMode
 {
-  CACHE_BUFFER_MODE_INTERNET = 0,
-  CACHE_BUFFER_MODE_ALL = 1,
-  CACHE_BUFFER_MODE_TRUE_INTERNET = 2,
-  CACHE_BUFFER_MODE_NONE = 3,
-  CACHE_BUFFER_MODE_NETWORK = 4,
+  INTERNET = 0,
+  ALL = 1,
+  TRUE_INTERNET = 2,
+  NONE = 3,
+  NETWORK = 4,
 };
 
-typedef enum {
-  IOCTRL_NATIVE        = 1,  /**< SNativeIoControl structure, containing what should be passed to native ioctrl */
-  IOCTRL_SEEK_POSSIBLE = 2,  /**< return 0 if known not to work, 1 if it should work */
-  IOCTRL_CACHE_STATUS  = 3,  /**< SCacheStatus structure */
-  IOCTRL_CACHE_SETRATE = 4,  /**< unsigned int with speed limit for caching in bytes per second */
-  IOCTRL_SET_CACHE     = 8,  /**< CFileCache */
-  IOCTRL_SET_RETRY     = 16, /**< Enable/disable retry within the protocol handler (if supported) */
-} EIoControl;
+enum class IOControl
+{
+  NATIVE = 1, /**< SNativeIoControl structure, containing what should be passed to native ioctrl */
+  SEEK_POSSIBLE = 2, /**< return 0 if known not to work, 1 if it should work */
+  CACHE_STATUS = 3, /**< SCacheStatus structure */
+  CACHE_SETRATE = 4, /**< unsigned int with speed limit for caching in bytes per second */
+  SET_CACHE = 8, /**< CFileCache */
+  SET_RETRY = 16, /**< Enable/disable retry within the protocol handler (if supported) */
+};
 
 enum CURLOPTIONTYPE
 {
