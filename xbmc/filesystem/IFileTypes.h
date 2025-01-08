@@ -76,12 +76,12 @@ enum class IOControl
   SET_RETRY = 16, /**< Enable/disable retry within the protocol handler (if supported) */
 };
 
-enum CURLOPTIONTYPE
+enum class CURLOptionType
 {
-  CURL_OPTION_OPTION,     /**< Set a general option   */
-  CURL_OPTION_PROTOCOL,   /**< Set a protocol option (see below)  */
-  CURL_OPTION_CREDENTIALS,/**< Set User and password  */
-  CURL_OPTION_HEADER      /**< Add a Header           */
+  OPTION, /**< Set a general option   */
+  PROTOCOL, /**< Set a protocol option (see below)  */
+  CREDENTIALS, /**< Set User and password  */
+  HEADER /**< Add a Header           */
 };
 
 /**
@@ -102,14 +102,14 @@ enum CURLOPTIONTYPE
  * sslcipherlist: Set list of accepted SSL ciphers.
  */
 
-enum FileProperty
+enum class FileProperty
 {
-  FILE_PROPERTY_RESPONSE_PROTOCOL,          /**< Get response protocol line  */
-  FILE_PROPERTY_RESPONSE_HEADER,            /**< Get response Header value  */
-  FILE_PROPERTY_CONTENT_TYPE,               /**< Get file content-type  */
-  FILE_PROPERTY_CONTENT_CHARSET,            /**< Get file content charset  */
-  FILE_PROPERTY_MIME_TYPE,                  /**< Get file mime type  */
-  FILE_PROPERTY_EFFECTIVE_URL               /**< Get effective URL for redirected streams  */
+  RESPONSE_PROTOCOL, /**< Get response protocol line  */
+  RESPONSE_HEADER, /**< Get response Header value  */
+  CONTENT_TYPE, /**< Get file content-type  */
+  CONTENT_CHARSET, /**< Get file content charset  */
+  MIME_TYPE, /**< Get file mime type  */
+  EFFECTIVE_URL /**< Get effective URL for redirected streams  */
 };
 
 class IFileCallback
