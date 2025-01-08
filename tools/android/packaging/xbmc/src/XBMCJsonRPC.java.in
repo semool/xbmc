@@ -1460,4 +1460,23 @@ public class XBMCJsonRPC
     return sUnwrapImageUrl;
   }
 
+  private String getImageUrl(String sUrl)
+  {
+    Log.d(TAG, "getImageUrl: sUrl = " + sUrl);
+    if (sUrl.startsWith("image://video@") || sUrl.startsWith("image://music@"))
+    {
+      Log.d(TAG, "getImageUrl: " + sUrl + " is not unwrapped");
+      return XBMCFileContentProvider.buildUri(sUrl).toString();
+    }
+
+    String sUnwrapImageUrl = this.mTextureCache.unwrapImageURL(sUrl);
+    Log.d(TAG, "getImageUrl: sUnwrapImageUrl = " + sUnwrapImageUrl);
+    if (!sUnwrapImageUrl.startsWith("http"))
+    {
+      return XBMCFileContentProvider.buildUri(sUrl).toString();
+    }
+
+    return sUnwrapImageUrl;
+  }
+
 }

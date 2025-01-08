@@ -10,7 +10,7 @@ public class XBMCTextureCache
 {
   native String _unwrapImageURL(String image);
 
-  private static String TAG = "@APP_NAME@texturecache";
+  private static final String TAG = "@APP_NAME@";
 
   public XBMCTextureCache()
   {
@@ -24,8 +24,7 @@ public class XBMCTextureCache
     }
     catch (Exception e)
     {
-      e.printStackTrace();
-      Log.e(TAG, "unwrapImageURL: Exception");
+      Log.e(TAG, "unwrapImageURL: Exception: " + e.getMessage());
       return null;
     }
   }

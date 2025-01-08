@@ -129,6 +129,7 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved)
   CJNIXBMCNsdManagerResolveListener::RegisterNatives(env);
   CJNIXBMCSpeechRecognitionListener::RegisterNatives(env);
   CJNIXBMCSurfaceTextureOnFrameAvailableListener::RegisterNatives(env);
+  CJNIXBMCTextureCache::RegisterNatives(env);
   CJNIXBMCURIUtils::RegisterNatives(env);
   CJNIXBMCVideoView::RegisterNatives(env);
 

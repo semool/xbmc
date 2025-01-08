@@ -13,19 +13,17 @@
 namespace jni
 {
 
-  class CJNIXBMCTextureCache : public CJNIBase
-  {
-  public:
-	CJNIXBMCTextureCache(const jni::jhobject &object) : CJNIBase(object) {}
+class CJNIXBMCTextureCache : public CJNIBase
+{
+public:
+  CJNIXBMCTextureCache(const jni::jhobject& object) : CJNIBase(object) {}
 
-    static void RegisterNatives(JNIEnv* env);
+  static void RegisterNatives(JNIEnv* env);
 
+protected:
+  ~CJNIXBMCTextureCache() override = default;
 
-  protected:
-    ~CJNIXBMCTextureCache() override = default;
+  static jstring _unwrapImageURL(JNIEnv* env, jobject thiz, jstring image);
+};
 
-    static jstring _unwrapImageURL(JNIEnv* env, jobject thiz, jstring image);
-
-  };
-
-}
+} // namespace jni
