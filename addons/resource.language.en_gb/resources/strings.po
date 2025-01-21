@@ -6749,7 +6749,6 @@ msgstr ""
 #: xbmc/cores/VideoPlayer/DVDInputStreams/DVDInputStreamNavigator.cpp
 #: xbmc/music/MusicDatabase.cpp
 #: xbmc/peripherals/bus/PeripheralBus.cpp
-#: xbmc/peripherals/devices/Peripheral.cpp
 #: xbmc/platform/win32/WIN32Util.cpp
 #: xbmc/pvr/addons/PVRClients.cpp
 #: xbmc/pvr/channels/PVRChannel.cpp
@@ -10052,7 +10051,8 @@ msgctxt "#19053"
 msgid "Recording information"
 msgstr ""
 
-#. header label for hide channel confirmation message box
+#. Header label for hide channel confirmation message box and context menu item label
+#: xbmc/pvr/PVRContextMenus.cpp
 #: xbmc/pvr/guilib/PVRGUIActionsChannels.cpp
 msgctxt "#19054"
 msgid "Hide channel"
