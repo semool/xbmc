@@ -36,6 +36,7 @@
 #include "settings/SettingsComponent.h"
 #include "threads/IRunnable.h"
 #include "utils/FileUtils.h"
+#include "utils/PlayerUtils.h"
 #include "utils/StringUtils.h"
 #include "utils/URIUtils.h"
 #include "utils/log.h"
@@ -361,8 +362,10 @@ void AddItemToPlayListAndPlay(const std::shared_ptr<CFileItem>& itemToQueue,
     for (const std::shared_ptr<CFileItem>& queuedItem : queuedItems)
     {
       if (queuedItem->IsSamePath(itemToPlay.get()))
+      {
+        queuedItem->m_lStartPartNumber = itemToPlay->m_lStartPartNumber;
         break;
-
+      }
       pos++;
     }
   }
@@ -437,10 +440,7 @@ void PlayItem(
     else // mode == PlayMode::PLAY_ONLY_THIS
     {
       // single item, play it
-      auto& playlistPlayer = CServiceBroker::GetPlaylistPlayer();
-      playlistPlayer.Reset();
-      playlistPlayer.SetCurrentPlaylist(PLAYLIST::Id::TYPE_NONE);
-      playlistPlayer.Play(item, player);
+      CPlayerUtils::PlayMedia(item, player, PLAYLIST::Id::TYPE_NONE);
     }
   }
 }
@@ -634,27 +634,34 @@ std::string GetResumeString(const CFileItem& item)
   const ResumeInformation resumeInfo = GetItemResumeInformation(item);
   if (resumeInfo.isResumable)
   {
-    if (resumeInfo.startOffset > 0)
-    {
-      std::string resumeString = StringUtils::Format(
-          g_localizeStrings.Get(12022),
-          StringUtils::SecondsToTimeString(
-              static_cast<long>(CUtil::ConvertMilliSecsToSecsInt(resumeInfo.startOffset)),
-              TIME_FORMAT_HH_MM_SS));
-      if (resumeInfo.partNumber > 0)
-      {
-        const std::string partString =
-            StringUtils::Format(g_localizeStrings.Get(23051), resumeInfo.partNumber);
-        resumeString += " (" + partString + ")";
-      }
-      return resumeString;
-    }
-    else
-    {
-      return g_localizeStrings.Get(13362); // Continue watching
-    }
+    return GetResumeString(resumeInfo.startOffset, resumeInfo.partNumber);
   }
-  return {};
+  else
+  {
+    return {};
+  }
+}
+
+std::string GetResumeString(int64_t startOffset, unsigned int partNumber)
+{
+  if (startOffset > 0)
+  {
+    std::string resumeString{
+        StringUtils::Format(g_localizeStrings.Get(12022),
+                            StringUtils::SecondsToTimeString(
+                                static_cast<long>(CUtil::ConvertMilliSecsToSecsInt(startOffset)),
+                                TIME_FORMAT_HH_MM_SS))};
+    if (partNumber > 0)
+    {
+      const std::string partString{StringUtils::Format(g_localizeStrings.Get(23051), partNumber)};
+      resumeString += " (" + partString + ")";
+    }
+    return resumeString;
+  }
+  else
+  {
+    return g_localizeStrings.Get(13362); // Continue watching
+  }
 }
 
 } // namespace KODI::VIDEO::UTILS
