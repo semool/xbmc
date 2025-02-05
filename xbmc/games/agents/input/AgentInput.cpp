@@ -105,13 +105,11 @@ void CAgentInput::Refresh()
 {
   if (m_gameClient)
   {
-    // Open keyboard
-    if (m_bHasKeyboard)
-      ProcessKeyboard();
+    // Process keyboard
+    ProcessKeyboard();
 
-    // Open mouse
-    if (m_bHasMouse)
-      ProcessMouse();
+    // Process mouse
+    ProcessMouse();
 
     // Open/close joysticks
     PERIPHERALS::EventLockHandlePtr inputHandlingLock;
@@ -431,11 +429,15 @@ void CAgentInput::ProcessAgentControllers(const PERIPHERALS::PeripheralVector& p
   // Handle new and existing controllers
   for (const auto& peripheral : peripherals)
   {
+    // Skip peripherals that have never been active
+    if (!peripheral->LastActive().IsValid())
+      continue;
+
     // Check if controller already exists
-    auto it = std::find_if(m_controllers.begin(), m_controllers.end(),
-                           [&peripheral](const std::shared_ptr<CAgentController>& controller) {
-                             return controller->GetPeripheralLocation() == peripheral->Location();
-                           });
+    auto it =
+        std::find_if(m_controllers.begin(), m_controllers.end(),
+                     [&peripheral](const std::shared_ptr<CAgentController>& controller)
+                     { return controller->GetPeripheralLocation() == peripheral->FileLocation(); });
 
     if (it == m_controllers.end())
     {
@@ -481,11 +483,10 @@ void CAgentInput::ProcessAgentControllers(const PERIPHERALS::PeripheralVector& p
       if (agentController->GetPeripheral()->Type() != PERIPHERALS::PERIPHERAL_JOYSTICK)
         continue;
 
-      auto it =
-          std::find_if(peripherals.begin(), peripherals.end(),
-                       [&agentController](const PERIPHERALS::PeripheralPtr& peripheral) {
-                         return agentController->GetPeripheralLocation() == peripheral->Location();
-                       });
+      auto it = std::find_if(
+          peripherals.begin(), peripherals.end(),
+          [&agentController](const PERIPHERALS::PeripheralPtr& peripheral)
+          { return agentController->GetPeripheralLocation() == peripheral->FileLocation(); });
 
       if (it == peripherals.end())
         expiredJoysticks.emplace_back(agentController->GetPeripheralLocation());
@@ -822,7 +823,7 @@ void CAgentInput::LogPeripheralMap(
       if (line != 0)
         CLog::Log(LOGDEBUG, "");
       CLog::Log(LOGDEBUG, "{}:", controllerAddress);
-      CLog::Log(LOGDEBUG, "    {} [{}]", peripheral->Location(), peripheral->DeviceName());
+      CLog::Log(LOGDEBUG, "    {} [{}]", peripheral->FileLocation(), peripheral->DeviceName());
 
       ++line;
     }
@@ -837,7 +838,7 @@ void CAgentInput::LogPeripheralMap(
     // Sort by peripheral location
     std::map<std::string, std::string> disconnectedPeripheralMap;
     for (const auto& peripheral : disconnectedPeripherals)
-      disconnectedPeripheralMap[peripheral->Location()] = peripheral->DeviceName();
+      disconnectedPeripheralMap[peripheral->FileLocation()] = peripheral->DeviceName();
 
     // Log location and device name for disconnected peripherals
     for (const auto& [location, deviceName] : disconnectedPeripheralMap)

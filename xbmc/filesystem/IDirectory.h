@@ -19,6 +19,12 @@ class CFileItem;
 
 namespace XFILE
 {
+/*!
+ \brief max attempts to resolve an item.
+ \sa Resolve
+ */
+static constexpr size_t MAX_ITEM_RESOLVE_ATTEMPTS{5};
+
 enum class CacheType
 {
   NEVER = 0, ///< Never cache this directory to memory
@@ -141,7 +147,7 @@ public:
   \param item The item being manipulated (which the path points to a vfs protocol implementation)
   \return true if the item was resolved, false if it failed to resolve
   */
-  virtual bool Resolve(CFileItem& item) const { return true; };
+  virtual bool Resolve(CFileItem& item) const { return true; }
 
 protected:
   /*! \brief Prompt the user for some keyboard input

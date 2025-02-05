@@ -14,7 +14,12 @@
 #include "input/mouse/interfaces/IMouseInputProvider.h"
 #include "peripherals/PeripheralTypes.h"
 
+#include <functional>
+#include <future>
 #include <map>
+#include <memory>
+#include <mutex>
+#include <queue>
 #include <set>
 #include <string>
 #include <vector>
@@ -24,6 +29,11 @@ class CSetting;
 
 namespace KODI
 {
+namespace GAME
+{
+class CAgentController;
+}
+
 namespace JOYSTICK
 {
 class IButtonMapper;
@@ -70,7 +80,8 @@ typedef enum
  */
 class CPeripheral : public KODI::JOYSTICK::IInputProvider,
                     public KODI::KEYBOARD::IKeyboardInputProvider,
-                    public KODI::MOUSE::IMouseInputProvider
+                    public KODI::MOUSE::IMouseInputProvider,
+                    public std::enable_shared_from_this<CPeripheral>
 {
   friend class CGUIDialogPeripheralSettings;
 
@@ -267,6 +278,20 @@ public:
   virtual CDateTime LastActive() const;
 
   /*!
+   * \brief Set the last time this peripheral was active
+   *
+   * \param lastActive The time of last activation, or invalid if unknown/never active
+   */
+  virtual void SetLastActive(const CDateTime& lastActive);
+
+  /*!
+   * \brief Return the current activity level of the peripheral
+   *
+   * \return The activity level, on a scale of 0.0 to 1.0
+   */
+  virtual float GetActivation() const;
+
+  /*!
    * \brief Get the controller profile that best represents this peripheral
    *
    * \return The controller profile, or empty if unknown
@@ -282,6 +307,13 @@ public:
 
 protected:
   virtual void ClearSettings(void);
+
+  // Helper functions
+  void InstallController(
+      const std::string& controllerId,
+      std::function<void(const KODI::GAME::ControllerPtr& installedController)> callback);
+  KODI::GAME::ControllerPtr InstallAsync(const std::string& controllerId);
+  static bool InstallSync(const std::string& controllerId);
 
   CPeripherals& m_manager;
   PeripheralType m_type;
@@ -313,5 +345,9 @@ protected:
       m_mouseHandlers;
   std::map<KODI::JOYSTICK::IButtonMapper*, std::unique_ptr<CAddonButtonMapping>> m_buttonMappers;
   KODI::GAME::ControllerPtr m_controllerProfile;
+  std::unique_ptr<KODI::GAME::CAgentController> m_controllerInput;
+  std::queue<std::string> m_controllersToInstall;
+  std::vector<std::future<void>> m_installTasks;
+  std::mutex m_controllerInstallMutex;
 };
 } // namespace PERIPHERALS
