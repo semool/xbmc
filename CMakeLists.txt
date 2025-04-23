@@ -117,6 +117,7 @@ dependent_option(ENABLE_INTERNAL_FMT "Enable internal fmt?")
 dependent_option(ENABLE_INTERNAL_NFS "Enable internal libnfs?")
 dependent_option(ENABLE_INTERNAL_PCRE2 "Enable internal pcre2?")
 dependent_option(ENABLE_INTERNAL_RapidJSON "Enable internal rapidjson?")
+dependent_option(ENABLE_INTERNAL_XSLT "Enable internal libxslt?")
 
 # If ENABLE_INTERNAL_FMT is ON, we force ENABLE_INTERNAL_SPDLOG ON as it has a hard
 # dependency on fmt
@@ -138,7 +139,6 @@ if(UNIX)
   option(ENABLE_INTERNAL_FSTRCMP "Enable internal fstrcmp?" OFF)
   option(ENABLE_INTERNAL_DAV1D "Enable internal dav1d?" OFF)
   option(ENABLE_INTERNAL_GTEST "Enable internal gtest?" OFF)
-  option(ENABLE_INTERNAL_UDFREAD "Enable internal udfread?" OFF)
 endif()
 
 # System options
