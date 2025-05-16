@@ -15,6 +15,7 @@
 #include "settings/SettingUtils.h"
 #include "settings/Settings.h"
 #include "settings/SettingsComponent.h"
+#include "settings/SettingsContainer.h"
 #include "settings/lib/Setting.h"
 #include "settings/lib/SettingsManager.h"
 #include "utils/StringUtils.h"
@@ -29,16 +30,15 @@
 
 namespace
 {
-static constexpr unsigned char Utf8Bom[3] = {0xEF, 0xBB, 0xBF};
-static const std::string LogFileExtension = ".log";
-static const std::string LogPattern = "%Y-%m-%d %T.%e T:%-5t %7l <%n>: %v";
+constexpr unsigned char Utf8Bom[3] = {0xEF, 0xBB, 0xBF};
+const std::string LogFileExtension = ".log";
+const std::string LogPattern = "%Y-%m-%d %T.%e T:%-5t %7l <%n>: %v";
 } // namespace
 
 CLog::CLog()
   : m_platform(IPlatformLog::CreatePlatformLog()),
     m_sinks(std::make_shared<spdlog::sinks::dist_sink_mt>()),
-    m_defaultLogger(CreateLogger("general")),
-    m_logLevel(LOG_LEVEL_DEBUG)
+    m_defaultLogger(CreateLogger("general"))
 {
   // add platform-specific debug sinks
   m_platform->AddSinks(m_sinks);
@@ -70,7 +70,7 @@ void CLog::OnSettingsLoaded()
 
 void CLog::OnSettingChanged(const std::shared_ptr<const CSetting>& setting)
 {
-  if (setting == NULL)
+  if (setting == nullptr)
     return;
 
   const std::string& settingId = setting->GetId();
@@ -92,10 +92,8 @@ void CLog::Initialize(const std::string& path)
   settingsManager->RegisterSettingOptionsFiller("loggingcomponents",
                                                 SettingOptionsLoggingComponentsFiller);
   settingsManager->RegisterSettingsHandler(this);
-  std::set<std::string> settingSet;
-  settingSet.insert(CSettings::SETTING_DEBUG_EXTRALOGGING);
-  settingSet.insert(CSettings::SETTING_DEBUG_SETEXTRALOGLEVEL);
-  settingsManager->RegisterCallback(this, settingSet);
+  settingsManager->RegisterCallback(
+      this, {CSettings::SETTING_DEBUG_EXTRALOGGING, CSettings::SETTING_DEBUG_SETEXTRALOGLEVEL});
 
   if (path.empty())
     return;
@@ -178,7 +176,7 @@ void CLog::SetLogLevel(int level)
                        fmt::make_format_args(spdlog::level::to_string_view(spdLevel)));
 }
 
-bool CLog::IsLogLevelLogged(int loglevel)
+bool CLog::IsLogLevelLogged(int loglevel) const
 {
   if (m_logLevel >= LOG_LEVEL_DEBUG)
     return true;
@@ -272,6 +270,21 @@ spdlog::level::level_enum CLog::MapLogLevel(int level)
   return spdlog::level::info;
 }
 
+void CLog::FormatAndLogInternal(spdlog::level::level_enum level,
+                                fmt::string_view format,
+                                fmt::format_args args)
+{
+  if (level < m_defaultLogger->level())
+    return;
+
+  auto message = fmt::vformat(format, args);
+
+  // fixup newline alignment, number of spaces should equal prefix length
+  FormatLineBreaks(message);
+
+  m_defaultLogger->log(level, message);
+}
+
 Logger CLog::CreateLogger(const std::string& loggerName)
 {
   // create the logger
@@ -295,7 +308,7 @@ void CLog::SetComponentLogLevel(const std::vector<CVariant>& components)
   }
 }
 
-void CLog::FormatLineBreaks(std::string& message)
+void CLog::FormatLineBreaks(std::string& message) const
 {
   StringUtils::Replace(message, "\n", "\n                                                   ");
 }
