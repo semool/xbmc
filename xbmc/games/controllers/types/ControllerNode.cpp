@@ -155,6 +155,16 @@ void CControllerNode::GetInputPorts(std::vector<std::string>& inputPorts) const
   m_hub->GetInputPorts(inputPorts);
 }
 
+void CControllerNode::GetKeyboardPorts(std::vector<std::string>& keyboardPorts) const
+{
+  m_hub->GetKeyboardPorts(keyboardPorts);
+}
+
+void CControllerNode::GetMousePorts(std::vector<std::string>& mousePorts) const
+{
+  m_hub->GetMousePorts(mousePorts);
+}
+
 bool CControllerNode::Serialize(tinyxml2::XMLElement& controllerElement) const
 {
   // Validate state
@@ -200,4 +210,15 @@ bool CControllerNode::Deserialize(const tinyxml2::XMLElement& controllerElement)
     return false;
 
   return true;
+}
+
+std::string CControllerNode::GetDigest(UTILITY::CDigest::Type digestType) const
+{
+  UTILITY::CDigest digest{digestType};
+
+  if (m_controller)
+    digest.Update(m_controller->ID());
+  digest.Update(m_hub->GetDigest(digestType));
+
+  return digest.FinalizeRaw();
 }

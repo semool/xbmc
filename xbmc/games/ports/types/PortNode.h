@@ -10,6 +10,7 @@
 
 #include "games/controllers/ControllerTypes.h"
 #include "games/controllers/types/ControllerNode.h"
+#include "utils/Digest.h"
 
 #include <string>
 #include <vector>
@@ -126,9 +127,26 @@ public:
    */
   void GetInputPorts(std::vector<std::string>& inputPorts) const;
 
+  /*!
+   * \brief Get a list of ports that accept keyboard input
+   *
+   * \param[out] keyboardPorts The list of keyboard ports
+   */
+  void GetKeyboardPorts(std::vector<std::string>& keyboardPorts) const;
+
+  /*!
+   * \brief Get a list of ports that accept mouse input
+   *
+   * \param[out] mousePorts The list of mouse ports
+   */
+  void GetMousePorts(std::vector<std::string>& mousePorts) const;
+
   // XML functions
   bool Serialize(tinyxml2::XMLElement& portElement) const;
   bool Deserialize(const tinyxml2::XMLElement& portElement);
+
+  // Crypto functions
+  std::string GetDigest(UTILITY::CDigest::Type digestType) const;
 
 private:
   void GetPort(CPhysicalPort& port) const;
