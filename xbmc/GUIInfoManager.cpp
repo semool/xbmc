@@ -51,7 +51,7 @@ namespace
 {
 struct InfoMap
 {
-  const char* str{nullptr};
+  std::string_view str{};
   int val{0};
 };
 
@@ -834,14 +834,23 @@ constexpr std::array<InfoMap, 7> integer_bools = {{
 ///     @skinning_v21 **[New Boolean Condition]** \link Player_IsRemote `Player.IsRemote`\endlink
 ///     <p>
 ///   }
+///   \table_row3{   <b>`Player.IsLive`</b>,
+///                  \anchor Player_IsLive
+///                  _boolean_,
+///     @return **True** if the inputstream of the player is a live stream (a.k.a. real time stream)\, **False** otherwise
+///     <p><hr>
+///     @skinning_v22 **[New Boolean Condition]** \link Player_IsLive `Player.IsLive`\endlink
+///     <p>
+///   }
 // clang-format off
-constexpr std::array<InfoMap, 57> player_labels = {{
+constexpr std::array<InfoMap, 58> player_labels = {{
     {"hasmedia",              PLAYER_HAS_MEDIA},
     {"hasaudio",              PLAYER_HAS_AUDIO},
     {"hasvideo",              PLAYER_HAS_VIDEO},
     {"hasgame",               PLAYER_HAS_GAME},
     {"isexternal",            PLAYER_IS_EXTERNAL},
     {"isremote",              PLAYER_IS_REMOTE},
+    {"islive",                PLAYER_IS_LIVE},
     {"playing",               PLAYER_PLAYING},
     {"paused",                PLAYER_PAUSED},
     {"rewinding",             PLAYER_REWINDING},
@@ -11663,7 +11672,7 @@ std::string CGUIInfoManager::GetImage(int info, int contextWindow, std::string *
 
 void CGUIInfoManager::ResetCurrentItem()
 {
-  m_currentFile->Reset();
+  m_currentFile = std::make_unique<CFileItem>();
   m_infoProviders.InitCurrentItem(nullptr);
 }
 
@@ -11832,19 +11841,25 @@ std::string CGUIInfoManager::GetMultiInfoItemLabel(const CFileItem *item, int co
         return strFile;
       }
       case LISTITEM_DATE:
-        if (item->m_dateTime.IsValid())
-          return item->m_dateTime.GetAsLocalizedDate();
+      {
+        const CDateTime& dateTime{item->GetDateTime()};
+        if (dateTime.IsValid())
+          return dateTime.GetAsLocalizedDate();
         break;
+      }
       case LISTITEM_DATETIME:
-        if (item->m_dateTime.IsValid())
-          return item->m_dateTime.GetAsLocalizedDateTime();
+      {
+        const CDateTime& dateTime{item->GetDateTime()};
+        if (dateTime.IsValid())
+          return dateTime.GetAsLocalizedDateTime();
         break;
+      }
       case LISTITEM_SIZE:
-        if (!item->m_bIsFolder || item->m_dwSize)
-          return StringUtils::SizeToString(item->m_dwSize);
+        if (!item->m_bIsFolder || item->GetSize())
+          return StringUtils::SizeToString(item->GetSize());
         break;
       case LISTITEM_PROGRAM_COUNT:
-        return std::to_string(item->m_iprogramCount);
+        return std::to_string(item->GetProgramCount());
       case LISTITEM_ACTUAL_ICON:
         return item->GetArt("icon");
       case LISTITEM_ICON:
@@ -11893,14 +11908,16 @@ std::string CGUIInfoManager::GetMultiInfoItemLabel(const CFileItem *item, int co
       }
       case LISTITEM_STARTTIME:
       {
-        if (item->m_dateTime.IsValid())
-          return item->m_dateTime.GetAsLocalizedTime("", false);
+        const CDateTime& dateTime{item->GetDateTime()};
+        if (dateTime.IsValid())
+          return dateTime.GetAsLocalizedTime("", false);
         break;
       }
       case LISTITEM_STARTDATE:
       {
-        if (item->m_dateTime.IsValid())
-          return item->m_dateTime.GetAsLocalizedDate(true);
+        const CDateTime& dateTime{item->GetDateTime()};
+        if (dateTime.IsValid())
+          return dateTime.GetAsLocalizedDate(true);
         break;
       }
       case LISTITEM_CURRENTITEM:
