@@ -582,7 +582,6 @@ public:
   bool HasMusicVideoInfo(const std::string& strFilenameAndPath);
 
   void GetFilePathById(int idMovie, std::string& filePath, VideoDbContentType iType);
-  std::vector<std::string> GetFilesByPathId(int idPath);
   std::string GetGenreById(int id) const;
   std::string GetCountryById(int id) const;
   std::string GetSetById(int id) const;
@@ -1095,24 +1094,20 @@ public:
   */
   unsigned int GetRandomMusicVideoIDs(const std::string& strWhere, std::vector<std::pair<int, int> > &songIDs);
 
-  static void VideoContentTypeToString(VideoDbContentType type, std::string& out)
+  static MediaType VideoContentTypeToString(VideoDbContentType type)
   {
     switch (type)
     {
       case VideoDbContentType::MOVIES:
-        out = MediaTypeMovie;
-        break;
+        return MediaTypeMovie;
       case VideoDbContentType::TVSHOWS:
-        out = MediaTypeTvShow;
-        break;
+        return MediaTypeTvShow;
       case VideoDbContentType::EPISODES:
-        out = MediaTypeEpisode;
-        break;
+        return MediaTypeEpisode;
       case VideoDbContentType::MUSICVIDEOS:
-        out = MediaTypeMusicVideo;
-        break;
+        return MediaTypeMusicVideo;
       default:
-        break;
+        return {};
     }
   }
 
@@ -1244,7 +1239,7 @@ public:
   bool GetVideoVersionTypes(VideoDbContentType idContent,
                             VideoAssetType asset,
                             CFileItemList& items);
-  bool SetVideoVersionDefaultArt(int dbId, int idFrom, VideoDbContentType type);
+  bool SetVideoVersionDefaultArt(int dbId, int idFrom, const MediaType& mediaType);
   void InitializeVideoVersionTypeTable(int schemaVersion);
   void UpdateVideoVersionTypeTable();
   bool GetVideoVersionsNav(const std::string& strBaseDir,
