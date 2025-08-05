@@ -598,9 +598,12 @@ bool CApplication::Initialize()
   int iDots = 1;
   while (!event.Wait(1000ms))
   {
-    CServiceBroker::GetRenderSystem()->ShowSplash(
-        std::string(iDots, ' ') + (databaseManager.IsConnecting() ? connecting : updating) +
-        std::string(iDots, '.'));
+    if (databaseManager.IsConnecting() || databaseManager.IsUpgrading())
+    {
+      CServiceBroker::GetRenderSystem()->ShowSplash(
+          std::string(iDots, ' ') + (databaseManager.IsConnecting() ? connecting : updating) +
+          std::string(iDots, '.'));
+    }
 
     if (iDots == 3)
       iDots = 1;
@@ -2527,6 +2530,7 @@ bool CApplication::PlayFile(CFileItem item, const std::string& player, bool bRes
 
       // Reset any resume state as new playlist chosen
       options = {};
+      item.ClearProperty("force_playlist_selection");
     }
   }
 

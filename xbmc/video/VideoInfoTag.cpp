@@ -15,6 +15,7 @@
 #include "settings/SettingsComponent.h"
 #include "utils/Archive.h"
 #include "utils/StringUtils.h"
+#include "utils/URIUtils.h"
 #include "utils/Variant.h"
 #include "utils/XMLUtils.h"
 #include "utils/log.h"
@@ -192,6 +193,12 @@ bool CVideoInfoTag::Save(TiXmlNode *node, const std::string &tag, bool savePathI
     XMLUtils::SetString(movie, "path", m_strPath);
     XMLUtils::SetString(movie, "filenameandpath", m_strFileNameAndPath);
     XMLUtils::SetString(movie, "basepath", m_basePath);
+  }
+  if (URIUtils::IsBlurayPath(m_strFileNameAndPath))
+  {
+    const int playlist{URIUtils::GetBlurayPlaylistFromPath(m_strFileNameAndPath)};
+    if (playlist != -1)
+      XMLUtils::SetInt(movie, "playlist", playlist);
   }
   if (!m_strEpisodeGuide.empty())
   {
@@ -997,6 +1004,9 @@ void CVideoInfoTag::ParseNative(const TiXmlElement* movie, bool prioritise)
   std::string value;
   float fValue;
 
+  if (StringUtils::ToLower(XMLUtils::GetAttribute(movie, "override")) == "true")
+    SetOverride(true);
+
   if (XMLUtils::GetString(movie, "title", value))
     SetTitle(value);
 
@@ -1136,6 +1146,9 @@ void CVideoInfoTag::ParseNative(const TiXmlElement* movie, bool prioritise)
 
   if (XMLUtils::GetString(movie, "filenameandpath", value))
     SetFileNameAndPath(value);
+  XMLUtils::GetInt(movie, "playlist", m_iTrack);
+  XMLUtils::GetBoolean(movie, "hasvideoversions", m_hasVideoVersions);
+  XMLUtils::GetBoolean(movie, "isdefaultvideoversion", m_isDefaultVideoVersion);
 
   if (XMLUtils::GetDate(movie, "premiered", m_premiered))
   {
@@ -1644,14 +1657,14 @@ void CVideoInfoTag::SetUniqueIDs(std::map<std::string, std::string, std::less<>>
   m_uniqueIDs = std::move(uniqueIDs);
 }
 
-void CVideoInfoTag::SetSet(std::string set)
+void CVideoInfoTag::SetSet(std::string_view set)
 {
-  m_set.SetTitle(std::move(set));
+  m_set.SetTitle(set);
 }
 
-void CVideoInfoTag::SetSetOverview(std::string setOverview)
+void CVideoInfoTag::SetSetOverview(std::string_view setOverview)
 {
-  m_set.SetOverview(std::move(setOverview));
+  m_set.SetOverview(setOverview);
 }
 
 void CVideoInfoTag::SetTags(std::vector<std::string> tags)
@@ -1862,6 +1875,7 @@ void CVideoInfoTag::CAssetInfo::ParseNative(const TiXmlElement* movie)
   if (XMLUtils::GetString(movie, "videoassettitle", value))
     m_title = value;
 
+  m_id = VIDEO_VERSION_ID_BEGIN;
   XMLUtils::GetInt(movie, "videoassetid", m_id);
 
   int assetType{-1};

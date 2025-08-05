@@ -150,8 +150,8 @@ public:
   void SetPremieredFromDBDate(const std::string& premieredString);
   virtual void SetYear(int year);
   void SetArtist(std::vector<std::string> artist);
-  void SetSet(std::string set);
-  void SetSetOverview(std::string setOverview);
+  void SetSet(std::string_view set);
+  void SetSetOverview(std::string_view setOverview);
   void SetTags(std::vector<std::string> tags);
   void SetFile(std::string file);
   void SetPath(std::string path);
@@ -169,6 +169,9 @@ public:
   void RemoveUniqueID(const std::string& type);
   void SetNamedSeasons(std::map<int, std::string> namedSeasons);
   void SetUserrating(int userrating);
+
+  void SetOverride(bool override) { m_override = override; }
+  bool GetOverride() const { return m_override; }
 
   /*!
    * @brief Get this videos's play count.
@@ -441,4 +444,5 @@ private:
   bool m_isDefaultVideoVersion{false};
 
   bool m_updateSetOverview{true};
+  bool m_override{false};
 };
