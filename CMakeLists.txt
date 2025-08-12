@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.18)
 if(WIN32)
-  # Version 3.20 is required for multi-config generator expressions to work
-  cmake_minimum_required(VERSION 3.20)
+  cmake_minimum_required(VERSION 3.28)
 endif()
+
 project(kodi LANGUAGES CXX C ASM)
 
 if(POLICY CMP0069)
@@ -216,7 +216,7 @@ set(required_buildtools FlatC
 
 # Optional build tools
 set(optional_buildtools CCache
-                        ClangFormat
+                        ClangFormat>=9.0
                         ClangTidy
                         Cppcheck
                         IncludeWhatYouUse)
@@ -292,7 +292,7 @@ core_optional_dep(${optional_deps})
 core_require_dep(${required_deps})
 
 # Check for any libs to be packaged with main app. eg libaacs
-# These libs are not directly linked with main app, but may be used if available from a 
+# These libs are not directly linked with main app, but may be used if available from a
 # dependency in the main app. eg libbluray can dyload libaacs for additional features
 if(PLATFORM_OPTIONAL_PACKAGES)
   core_optional_package_lib(${PLATFORM_OPTIONAL_PACKAGES})
