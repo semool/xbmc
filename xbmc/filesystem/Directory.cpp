@@ -19,13 +19,13 @@
 #include "commons/Exception.h"
 #include "dialogs/GUIDialogBusy.h"
 #include "guilib/GUIWindowManager.h"
+#include "jobs/Job.h"
+#include "jobs/JobManager.h"
 #include "messaging/ApplicationMessenger.h"
 #include "music/MusicFileItemClassify.h"
 #include "playlists/PlayListFileItemClassify.h"
 #include "settings/Settings.h"
 #include "settings/SettingsComponent.h"
-#include "utils/Job.h"
-#include "utils/JobManager.h"
 #include "utils/URIUtils.h"
 #include "utils/log.h"
 #include "video/VideoFileItemClassify.h"
@@ -189,8 +189,6 @@ bool CDirectory::GetDirectory(const CURL& url,
 
       while (!result)
       {
-        const std::string pathToUrl(url.Get());
-
         // don't change auth if it's set explicitly
         if (CPasswordManager::GetInstance().IsURLSupported(authUrl) && authUrl.GetUserName().empty())
           CPasswordManager::GetInstance().AuthenticateURL(authUrl);
