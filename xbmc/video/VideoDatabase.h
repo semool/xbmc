@@ -669,7 +669,7 @@ public:
   void GetEpisodesByFileId(int idFile, std::vector<CVideoInfoTag>& episodes);
   bool GetEpisodeMap(int idShow,
                      EpisodeFileMap& fileMap,
-                     const std::unique_ptr<dbiplus::Dataset>& pDS,
+                     dbiplus::Dataset& pDS,
                      int idFile = -1 /* = -1 */) const;
 
   int SetDetailsForItem(CVideoInfoTag& details, const KODI::ART::Artwork& artwork);
@@ -1300,18 +1300,18 @@ public:
                              DeleteMovieCascadeAction cascadeAction);
 
   /*!
-   * \brief Adds a version of an existing movie to the database
+   * \brief Adds or updates a version of an existing movie to the database
    * \param itemType type of the video being converted
    * \param dbIdSource id of the video being converted
    * \param idVideoVersion new versiontype of the default version of the video
    * \param assetType new asset type of the default version of the video
-   * \return dbId in the videoversion table, -1 if failure
+   * \return true if success, false otherwise
    */
-  int AddVideoVersion(VideoDbContentType itemType,
-                      int dbIdSource,
-                      int idFile,
-                      int idVideoVersion,
-                      VideoAssetType assetType);
+  bool AddOrUpdateVideoVersion(VideoDbContentType itemType,
+                               int dbIdSource,
+                               int idFile,
+                               int idVideoVersion,
+                               VideoAssetType assetType);
 
   void SetDefaultVideoVersion(VideoDbContentType itemType, int dbId, int idFile);
   void SetVideoVersion(int idFile, int idVideoVersion);

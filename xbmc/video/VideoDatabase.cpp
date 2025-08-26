@@ -3061,16 +3061,14 @@ int CVideoDatabase::AddMovieVersion(CFileItem& item, int idMovie, const ART::Art
   if (tag->HasStreamDetails() && !SetStreamDetailsForFileId(tag->m_streamDetails, idFile))
     return -1;
 
-  const int idVersion{AddVideoVersion(item.GetVideoContentType(), idMovie, idFile,
-                                      tag->GetAssetInfo().GetId(), VideoAssetType::VERSION)};
-  if (idVersion == -1)
+  if (!AddOrUpdateVideoVersion(item.GetVideoContentType(), idMovie, idFile,
+                               tag->GetAssetInfo().GetId(), VideoAssetType::VERSION))
     return -1;
 
-  for (const auto& [type, url] : art)
-    if (!SetArtForItem(idVersion, MediaTypeVideoVersion, type, url))
-      return -1;
+  if (!SetArtForItem(idFile, MediaTypeVideoVersion, art))
+    return -1;
 
-  return idVersion;
+  return idFile;
 }
 
 int CVideoDatabase::GetMatchingTvShow(const CVideoInfoTag& details) const
@@ -3983,7 +3981,7 @@ void CVideoDatabase::GetEpisodesByFileId(int idFile, std::vector<CVideoInfoTag>&
 
     // Generate map of episodes in each file (finding base file for bluray://) of show
     EpisodeFileMap fileMap;
-    if (!GetEpisodeMap(idShow, fileMap, m_pDS, idFile))
+    if (!GetEpisodeMap(idShow, fileMap, *m_pDS, idFile))
       return;
 
     // Get episode details
@@ -4004,7 +4002,7 @@ void CVideoDatabase::GetEpisodesByFileId(int idFile, std::vector<CVideoInfoTag>&
 
 bool CVideoDatabase::GetEpisodeMap(int idShow,
                                    EpisodeFileMap& fileMap,
-                                   const std::unique_ptr<Dataset>& pDS,
+                                   dbiplus::Dataset& pDS,
                                    int idFile /* = -1 */) const
 {
   try
@@ -4016,30 +4014,30 @@ bool CVideoDatabase::GetEpisodeMap(int idShow,
         "where episode_view.idShow = %i "
         "order by cast(episode_view.c%02d as integer), cast(episode_view.c%02d as integer)",
         CStreamDetail::VIDEO, idShow, VIDEODB_ID_EPISODE_SEASON, VIDEODB_ID_EPISODE_EPISODE)};
-    pDS->query(sql);
+    pDS.query(sql);
 
     // Generate map of episodes in each file (finding base file for bluray://) of show
     int index{1};
     std::string episodeFile{};
-    while (!pDS->eof())
+    while (!pDS.eof())
     {
       EpisodeInformation episodeInformation;
-      const std::string file{URIUtils::AddFileToFolder(pDS->fv("strPath").get_asString(),
-                                                       pDS->fv("strFileName").get_asString())};
+      const std::string file{URIUtils::AddFileToFolder(pDS.fv("strPath").get_asString(),
+                                                       pDS.fv("strFileName").get_asString())};
       const std::string baseFile{URIUtils::IsBlurayPath(file) ? URIUtils::GetDiscFile(file) : file};
       // Different scrapers put duration in different places
-      const unsigned int streamDetailsDuration{pDS->fv("duration").get_asUInt()};
+      const unsigned int streamDetailsDuration{pDS.fv("duration").get_asUInt()};
       const unsigned int episodeViewDuration{
-          pDS->fv(StringUtils::Format("c{:02}", VIDEODB_ID_EPISODE_RUNTIME).c_str()).get_asUInt()};
+          pDS.fv(StringUtils::Format("c{:02}", VIDEODB_ID_EPISODE_RUNTIME).c_str()).get_asUInt()};
       episodeInformation.duration =
           episodeViewDuration > 0 ? episodeViewDuration : streamDetailsDuration;
       episodeInformation.index = index;
 
       fileMap.insert({baseFile, episodeInformation});
-      if (idFile > 0 && episodeFile.empty() && pDS->fv("idFile").get_asInt() == idFile)
+      if (idFile > 0 && episodeFile.empty() && pDS.fv("idFile").get_asInt() == idFile)
         episodeFile = baseFile;
 
-      pDS->next();
+      pDS.next();
       index++;
     }
 
@@ -4647,12 +4645,13 @@ void CVideoDatabase::GetSameVideoItems(const CFileItem& item, CFileItemList& ite
     // note 2: for type 'tmdb' the same value may be used for a movie and a tv episode, only
     // distinguished by media_type.
     // @todo make the (value,type) pairs truly unique
-    m_pDS->query(PrepareSQL("SELECT DISTINCT media_id "
-                            "FROM uniqueid "
-                            "WHERE (media_type, value, type) IN "
-                            "  (SELECT media_type, value, type "
-                            "  FROM uniqueid WHERE media_id = %i AND media_type = '%s') ",
-                            dbId, mediaType.c_str()));
+    m_pDS->query(
+        PrepareSQL("SELECT DISTINCT media_id "
+                   "FROM uniqueid "
+                   "WHERE (media_type, value, type) IN "
+                   "  (SELECT media_type, value, type "
+                   "  FROM uniqueid WHERE media_id = %i AND media_type = '%s' AND value != '') ",
+                   dbId, mediaType.c_str()));
 
     while (!m_pDS->eof())
     {
@@ -12066,7 +12065,7 @@ void CVideoDatabase::ExportToXML(const std::string &path, bool singleFile /* = t
 
       // Generate map of episodes in each file (finding base file for bluray://)
       EpisodeFileMap fileMap;
-      if (!GetEpisodeMap(tvshow.m_iDbId, fileMap, pDS))
+      if (!GetEpisodeMap(tvshow.m_iDbId, fileMap, *pDS))
       {
         CLog::Log(LOGERROR, "Failed to generate episode map for TV show ID {}", tvshow.m_iDbId);
         continue; // Skip processing for this TV show
@@ -13538,31 +13537,51 @@ bool CVideoDatabase::ConvertVideoToVersion(VideoDbContentType itemType,
   return true;
 }
 
-int CVideoDatabase::AddVideoVersion(VideoDbContentType itemType,
-                                    int dbIdSource,
-                                    int idFile,
-                                    int idVideoVersion,
-                                    VideoAssetType assetType)
+bool CVideoDatabase::AddOrUpdateVideoVersion(VideoDbContentType itemType,
+                                             int dbIdSource,
+                                             int idFile,
+                                             int idVideoVersion,
+                                             VideoAssetType assetType)
 {
   if (!m_pDB || !m_pDS)
-    return -1;
+    return false;
 
-  const std::string sql{PrepareSQL(
-      "INSERT INTO videoversion (idFile, idMedia, media_type, itemType, idType) "
-      "VALUES(%i, %i, '%s', %i, %i)",
-      idFile, dbIdSource, VideoContentTypeToString(itemType).c_str(), assetType, idVideoVersion)};
-
+  std::string sql;
   try
   {
+    sql = PrepareSQL("SELECT 1 FROM videoversion WHERE idFile=%i", idFile);
+    m_pDS->query(sql);
+    if (m_pDS->num_rows() > 0)
+    {
+      m_pDS->close();
+
+      sql = PrepareSQL("UPDATE videoversion "
+                       "SET idMedia = %i, media_type = '%s', itemType = %i, idType = %i "
+                       "WHERE idFile=%i",
+                       dbIdSource, VideoContentTypeToString(itemType).c_str(), assetType,
+                       idVideoVersion, idFile);
+
+      m_pDS->exec(sql);
+
+      return true;
+    }
+
+    m_pDS->close();
+
+    sql = PrepareSQL("INSERT INTO videoversion (idFile, idMedia, media_type, itemType, idType) "
+                     "VALUES(%i, %i, '%s', %i, %i)",
+                     idFile, dbIdSource, VideoContentTypeToString(itemType).c_str(), assetType,
+                     idVideoVersion);
+
     m_pDS->exec(sql);
 
-    return static_cast<int>(m_pDS->lastinsertid());
+    return true;
   }
   catch (const std::exception& e)
   {
-    CLog::LogF(LOGERROR, "Unable to add version ({}) - error {}", sql, e.what());
+    CLog::LogF(LOGERROR, "Unable to add/update version ({}) - error {}", sql, e.what());
   }
-  return -1;
+  return false;
 }
 
 void CVideoDatabase::SetDefaultVideoVersion(VideoDbContentType itemType, int dbId, int idFile)
