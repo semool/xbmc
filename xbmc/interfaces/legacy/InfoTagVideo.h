@@ -1468,6 +1468,23 @@ namespace XBMCAddon
 #ifdef DOXYGEN_SHOULD_USE_THIS
       ///
       /// \ingroup python_InfoTagVideo
+      /// \brief \python_func{ getOriginalLanguage() }
+      /// To retrieve the original language of the video.
+      ///
+      /// \return [string] Original language ISO 639-2/B code
+      ///
+      ///
+      ///-----------------------------------------------------------------------
+      /// @python_v22 New function added.
+      ///
+      getOriginalLanguage();
+#else
+      String getOriginalLanguage();
+#endif
+
+#ifdef DOXYGEN_SHOULD_USE_THIS
+      ///
+      /// \ingroup python_InfoTagVideo
       /// @brief \python_func{ getPremiered() }
       /// To get [premiered](https://en.wikipedia.org/wiki/Premiere) date
       /// of the video, if available.
@@ -2062,6 +2079,24 @@ namespace XBMCAddon
 #ifdef DOXYGEN_SHOULD_USE_THIS
       ///
       /// \ingroup python_InfoTagVideo
+      /// \brief \python_func{ setOriginalLanguage(language) }
+      /// Set the original language of the video item.
+      ///
+      /// \param language      string - ISO-639-1, ISO-639/B, ISO 639-2/T or full english name
+      /// \return [boolean]    status code. true for success, false for failure (most likely an unrecognized language parameter value).
+      ///
+      ///
+      ///-----------------------------------------------------------------------
+      /// @python_v22 New function added.
+      ///
+      setOriginalLanguage(...);
+#else
+      bool setOriginalLanguage(const String& language);
+#endif
+
+#ifdef DOXYGEN_SHOULD_USE_THIS
+      ///
+      /// \ingroup python_InfoTagVideo
       /// @brief \python_func{ setSortTitle(sorttitle) }
       /// Set the sort title of the video item.
       ///
@@ -2573,45 +2608,48 @@ namespace XBMCAddon
 #ifdef DOXYGEN_SHOULD_USE_THIS
       ///
       /// \ingroup python_InfoTagVideo
-      /// @brief \python_func{ addSeason(number, [name]) }
-      /// Add a season with name. It needs at least the season number.
+      /// @brief \python_func{ addSeason(number, [name], [plot]) }
+      /// Add a season with name and a plot. It needs at least the season number.
       ///
       /// @param number     int - the number of the season.
       /// @param name       string - the name of the season. Default "".
+      /// @param plot       string - the plot of the season. Default "".
       ///
       ///
       ///-----------------------------------------------------------------------
       ///
       /// @python_v20 New function added.
+      /// @python_v22 Added plot parameter
       ///
       /// **Example:**
       /// ~~~~~~~~~~~~~{.py}
       /// ...
-      /// # addSeason(number, name))
-      /// infotagvideo.addSeason(1, "Murder House")
+      /// # addSeason(number, name, plot))
+      /// infotagvideo.addSeason(1, "Murder House", "The first installment revolves around...")
       /// ...
       /// ~~~~~~~~~~~~~
       ///
       addSeason(...);
 #else
-      void addSeason(int number, std::string name = "");
+      void addSeason(int number, std::string name = "", std::string plot = "");
 #endif
 
 #ifdef DOXYGEN_SHOULD_USE_THIS
       ///
       /// \ingroup python_InfoTagVideo
-      /// @brief \python_func{ addSeasons(namedseasons) }
-      /// Add named seasons to the TV show.
+      /// @brief \python_func{ addSeasons(seasons) }
+      /// Add seasons to the TV show.
       ///
-      /// @param namedseasons       list - `[ (season, name) ]`.
+      /// @param seasons       list - `[ (season, name, plot) ]`.
       ///
       ///
       ///-----------------------------------------------------------------------
       /// @python_v20 New function added.
+      /// @python_v22 Added third element to the tuple for the season plot
       ///
       addSeasons(...);
 #else
-      void addSeasons(const std::vector<Tuple<int, std::string>>& namedseasons);
+      void addSeasons(const std::vector<Tuple<int, std::string, std::string>>& seasons);
 #endif
 
 #ifdef DOXYGEN_SHOULD_USE_THIS
@@ -2737,6 +2775,7 @@ namespace XBMCAddon
       static void setPlotOutlineRaw(CVideoInfoTag* infoTag, const String& plotOutline);
       static void setTitleRaw(CVideoInfoTag* infoTag, const String& title);
       static void setOriginalTitleRaw(CVideoInfoTag* infoTag, const String& originalTitle);
+      static bool setOriginalLanguageRaw(CVideoInfoTag* infoTag, const String& language);
       static void setSortTitleRaw(CVideoInfoTag* infoTag, const String& sortTitle);
       static void setTagLineRaw(CVideoInfoTag* infoTag, const String& tagLine);
       static void setTvShowTitleRaw(CVideoInfoTag* infoTag, const String& tvshowTitle);
@@ -2768,9 +2807,12 @@ namespace XBMCAddon
       static void setCastRaw(CVideoInfoTag* infoTag, std::vector<SActorInfo> cast);
       static void setResumePointRaw(CVideoInfoTag* infoTag, double time, double totalTime = 0.0);
 
-      static void addSeasonRaw(CVideoInfoTag* infoTag, int number, std::string name = "");
+      static void addSeasonRaw(CVideoInfoTag* infoTag,
+                               int number,
+                               std::string name = "",
+                               std::string plot = "");
       static void addSeasonsRaw(CVideoInfoTag* infoTag,
-                                const std::vector<Tuple<int, std::string>>& namedSeasons);
+                                const std::vector<Tuple<int, std::string, std::string>>& seasons);
 
       static void addStreamRaw(CVideoInfoTag* infoTag, CStreamDetail* stream);
       static void finalizeStreamsRaw(CVideoInfoTag* infoTag);
