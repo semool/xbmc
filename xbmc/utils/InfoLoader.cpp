@@ -17,7 +17,6 @@ CInfoLoader::CInfoLoader(unsigned int timeToRefresh)
 {
   m_refreshTime = 0;
   m_timeToRefresh = timeToRefresh;
-  m_busy = false;
 }
 
 CInfoLoader::~CInfoLoader() = default;
@@ -28,14 +27,22 @@ void CInfoLoader::OnJobComplete(unsigned int jobID, bool success, CJob *job)
   m_busy = false;
 }
 
-std::string CInfoLoader::GetInfo(int info)
+bool CInfoLoader::RefreshIfNeeded()
 {
-  // Refresh if need be
   if (m_refreshTime < CTimeUtils::GetFrameTime() && !m_busy)
-  { // queue up the job
+  {
+    // queue up data refresh job
     m_busy = true;
     CServiceBroker::GetJobManager()->AddJob(GetJob(), this);
+    return true;
   }
+  return false;
+}
+
+std::string CInfoLoader::GetInfo(int info)
+{
+  RefreshIfNeeded();
+
   if (m_busy && CTimeUtils::GetFrameTime() - m_refreshTime > 1000)
   {
     return BusyInfo(info);
