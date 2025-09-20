@@ -394,6 +394,19 @@ void CGUIDialogAddonInfo::OnSelectVersion()
     HELPERS::ShowOKDialogText(CVariant{21341}, CVariant{21342});
   else
   {
+    // Sort first by origin, then by version - descending.
+    std::ranges::sort(versions,
+                      [](const auto& a, const auto& b)
+                      {
+                        const auto& [versionA, originA] = a;
+                        const auto& [versionB, originB] = b;
+
+                        if (originA == originB)
+                          return versionA > versionB;
+
+                        return originA > originB;
+                      });
+
     int i = AskForVersion(versions);
     if (i != -1)
     {
@@ -610,7 +623,8 @@ void CGUIDialogAddonInfo::OnEnableDisable()
     if (PromptIfDependency(24075, 24091))
       return; //required. can't disable
 
-    CServiceBroker::GetAddonMgr().DisableAddon(m_localAddon->ID(), AddonDisabledReason::USER);
+    if (CServiceBroker::GetAddonMgr().DisableAddon(m_localAddon->ID(), AddonDisabledReason::USER))
+      m_item->SetProperty("Addon.Status", g_localizeStrings.Get(24023)); // Disabled
   }
   else
   {
@@ -618,7 +632,8 @@ void CGUIDialogAddonInfo::OnEnableDisable()
     if (!ADDON::GUI::CHelpers::DialogAddonLifecycleUseAsk(m_localAddon))
       return;
 
-    CServiceBroker::GetAddonMgr().EnableAddon(m_localAddon->ID());
+    if (CServiceBroker::GetAddonMgr().EnableAddon(m_localAddon->ID()))
+      m_item->SetProperty("Addon.Status", g_localizeStrings.Get(305)); // Enabled
   }
 
   UpdateControls(PerformButtonFocus::CHOICE_NO);
