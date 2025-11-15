@@ -14,6 +14,7 @@ if(NOT TARGET LIBRARY::NGHttp2)
 
     set(patches "${CORE_SOURCE_DIR}/tools/depends/target/${${CMAKE_FIND_PACKAGE_NAME}_MODULE_LC}/01-all-cmake-version.patch")
     generate_patchcommand("${patches}")
+    unset(patches)
 
     set(CMAKE_ARGS -DENABLE_DEBUG=OFF
                    -DENABLE_FAILMALLOC=OFF
@@ -52,7 +53,8 @@ if(NOT TARGET LIBRARY::NGHttp2)
   endif()
 
   # Check for existing Nghttp2. If version >= NGHTTP2-VERSION file version, dont build
-  if(${${CMAKE_FIND_PACKAGE_NAME}_SEARCH_NAME}_VERSION VERSION_LESS ${${${CMAKE_FIND_PACKAGE_NAME}_MODULE}_VER} AND NGHttp2_FIND_REQUIRED)
+  if("${${${CMAKE_FIND_PACKAGE_NAME}_SEARCH_NAME}_VERSION}" VERSION_LESS ${${${CMAKE_FIND_PACKAGE_NAME}_MODULE}_VER} AND NGHttp2_FIND_REQUIRED)
+    message(STATUS "Building ${${CMAKE_FIND_PACKAGE_NAME}_MODULE_LC}: \(version \"${${${CMAKE_FIND_PACKAGE_NAME}_MODULE}_VER}\"\)")
     cmake_language(EVAL CODE "
       buildmacro${CMAKE_FIND_PACKAGE_NAME}()
     ")
