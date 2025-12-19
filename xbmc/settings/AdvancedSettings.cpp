@@ -26,7 +26,6 @@
 #include "utils/StringUtils.h"
 #include "utils/SystemInfo.h"
 #include "utils/URIUtils.h"
-#include "utils/Variant.h"
 #include "utils/XMLUtils.h"
 #include "utils/log.h"
 
@@ -271,13 +270,14 @@ void CAdvancedSettings::Initialize()
                                         m_allExcludeFromScanRegExps.end());
 
   m_folderStackRegExps = CompileRegexes({
-      "((cd|dvd|dis[ck])[0-9]+)$",
+      "(.*?)(?:[^\\/])((?:cd|dvd|p(?:(?:ar)?t)|dis[ck])[ _.-]*[0-9])$",
+      "()((?:p(?:(?:ar)?t)[ _.-]*[0-9]))$",
   });
 
   m_videoStackRegExps = CompileRegexes({
-      "(.*?)([ _.-]*(?:cd|dvd|p(?:(?:ar)?t)|dis[ck])[ _.-]*[0-9]+)(.*?)(\\.[^.]+)$",
-      "(.*?)([ _.-]*(?:cd|dvd|p(?:(?:ar)?t)|dis[ck])[ _.-]*[a-d])(.*?)(\\.[^.]+)$",
-      "(.*?)([ ._-]*[a-d])(.*?)(\\.[^.]+)$",
+      "(.*?)([ _.-]*(?:cd|dvd|p(?:(?:ar)?t)|dis[ck]|file)[ _.-]*[0-9]+)(.*?)(\\.[^.]+)$",
+      "(.*?)([ _.-]*(?:cd|dvd|p(?:(?:ar)?t)|dis[ck])[ _.-]*[a-z])(.*?)(\\.[^.]+)$",
+      "^(.+)((?:[ ._-]|(?<=\\)))[a-z])()(\\.[^.]+)$",
       // This one is a bit too greedy to enable by default.  It will stack sequels
       // in a flat dir structure, but is perfectly safe in a dir-per-vid one.
       // "(.*?)([ ._-]*[0-9])(.*?)(\\.[^.]+)$",
@@ -434,6 +434,11 @@ void CAdvancedSettings::Initialize()
 
   m_cpuTempCmd = "";
   m_gpuTempCmd = "";
+
+  m_powerdownCommand = "";
+  m_rebootCommand = "";
+  m_suspendCommand = "";
+  m_hibernateCommand = "";
 #if defined(TARGET_DARWIN)
   // default for osx is fullscreen always on top
   m_alwaysOnTop = true;
@@ -1172,6 +1177,15 @@ void CAdvancedSettings::ParseSettingsFile(const std::string &file)
 
   XMLUtils::GetString(pRootElement, "cputempcommand", m_cpuTempCmd);
   XMLUtils::GetString(pRootElement, "gputempcommand", m_gpuTempCmd);
+
+  const TiXmlElement* pPowerManagement = pRootElement->FirstChildElement("powermanagement");
+  if (pPowerManagement)
+  {
+    XMLUtils::GetString(pPowerManagement, "powerdown", m_powerdownCommand);
+    XMLUtils::GetString(pPowerManagement, "reboot", m_rebootCommand);
+    XMLUtils::GetString(pPowerManagement, "suspend", m_suspendCommand);
+    XMLUtils::GetString(pPowerManagement, "hibernate", m_hibernateCommand);
+  }
 
   XMLUtils::GetBoolean(pRootElement, "alwaysontop", m_alwaysOnTop);
 

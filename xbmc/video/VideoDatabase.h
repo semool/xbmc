@@ -688,12 +688,6 @@ public:
                      dbiplus::Dataset& pDS,
                      int idFile = -1 /* = -1 */) const;
 
-  int SetDetailsForItem(CVideoInfoTag& details, const KODI::ART::Artwork& artwork);
-  int SetDetailsForItem(int id,
-                        MediaType_view mediaType,
-                        CVideoInfoTag& details,
-                        const KODI::ART::Artwork& artwork);
-
   int SetDetailsForMovie(CVideoInfoTag& details,
                          const KODI::ART::Artwork& artwork,
                          int idMovie = -1);
@@ -872,8 +866,9 @@ public:
    */
   bool EraseAllForFile(const std::string& fileNameAndPath);
 
-  bool GetStackTimes(const std::string &filePath, std::vector<uint64_t> &times);
-  void SetStackTimes(const std::string &filePath, const std::vector<uint64_t> &times);
+  bool GetStackTimes(const std::string& filePath, std::vector<std::chrono::milliseconds>& times);
+  void SetStackTimes(const std::string& filePath,
+                     const std::vector<std::chrono::milliseconds>& times);
 
   void GetBookMarksForFile(const std::string& strFilenameAndPath, VECBOOKMARKS& bookmarks, CBookmark::EType type = CBookmark::STANDARD, bool bAppend=false, long partNumber=0);
   bool AddBookMarkToFile(const std::string& strFilenameAndPath,
@@ -1369,7 +1364,7 @@ public:
                             VideoAssetType asset,
                             CFileItemList& items);
   bool SetVideoVersionDefaultArt(int dbId, int idFrom, const MediaType& mediaType);
-  void InitializeVideoVersionTypeTable(int schemaVersion);
+  void InitializeVideoVersionTypeTable();
   void UpdateVideoVersionTypeTable();
   bool GetVideoVersionsNav(const std::string& strBaseDir,
                            CFileItemList& items,
