@@ -54,7 +54,9 @@
 #include "utils/URIUtils.h"
 #include "utils/Variant.h"
 #include "utils/XMLUtils.h"
+#include "utils/i18n/TableLanguageCodes.h"
 #include "utils/log.h"
+#include "video/VideoDatabaseColumns.h"
 #include "video/VideoDbUrl.h"
 #include "video/VideoFileItemClassify.h"
 #include "video/VideoInfoTag.h"
@@ -149,7 +151,7 @@ void CVideoDatabase::CreateTables()
   for (int i = 0; i < VIDEODB_MAX_COLUMNS; i++)
     columns += StringUtils::Format(",c{:02} text", i);
 
-  columns += ", userrating integer, duration INTEGER, originalLanguage text)";
+  columns += ", userrating INTEGER, duration INTEGER, originalLanguage TEXT, tagLine TEXT)";
   m_pDS->exec(columns);
 
   CLog::Log(LOGINFO, "create episode table");
@@ -3178,6 +3180,12 @@ bool CVideoDatabase::UpdateDetailsForTvShow(int idTvShow,
     else
       sql += ", originalLanguage = NULL";
   }
+
+  if (!details.m_strTagLine.empty())
+    sql += PrepareSQL(", tagLine = '%s'", details.m_strTagLine.c_str());
+  else
+    sql += ", tagLine = NULL";
+
   sql += PrepareSQL(" WHERE idShow=%i", idTvShow);
   if (ExecuteQuery(sql))
   {
@@ -5051,7 +5059,7 @@ CVideoInfoTag CVideoDatabase::GetDetailsForMovie(const dbiplus::sql_record* cons
   else
     details.SetPremieredFromDBDate(premieredString);
   details.SetOriginalLanguage(record->at(VIDEODB_DETAILS_MOVIE_ORIGINAL_LANGUAGE).get_asString(),
-                              CVideoInfoTag::LanguageProcessing::PROCESSING_NONE);
+                              CVideoInfoTag::LanguageTagSource::SOURCE_INTERNAL);
 
   if (getDetails)
   {
@@ -5151,7 +5159,8 @@ CVideoInfoTag CVideoDatabase::GetDetailsForTvShow(const dbiplus::sql_record* con
   details.SetUniqueID(record->at(VIDEODB_DETAILS_TVSHOW_UNIQUEID_VALUE).get_asString(), record->at(VIDEODB_DETAILS_TVSHOW_UNIQUEID_TYPE).get_asString(), true);
   details.SetDuration(record->at(VIDEODB_DETAILS_TVSHOW_DURATION).get_asInt());
   details.SetOriginalLanguage(record->at(VIDEODB_DETAILS_TVSHOW_ORIGINAL_LANGUAGE).get_asString(),
-                              CVideoInfoTag::LanguageProcessing::PROCESSING_NONE);
+                              CVideoInfoTag::LanguageTagSource::SOURCE_INTERNAL);
+  details.SetTagLine(record->at(VIDEODB_DETAILS_TVSHOW_TAGLINE).get_asString());
 
   //! @todo videotag member + guiinfo int needed?
   //! -- Currently not needed; having it available as item prop seems sufficient for skinning
@@ -5248,7 +5257,7 @@ CVideoInfoTag CVideoDatabase::GetDetailsForEpisode(const dbiplus::sql_record* co
   details.SetPremieredFromDBDate(record->at(VIDEODB_DETAILS_EPISODE_TVSHOW_AIRED).get_asString());
   details.SetOriginalLanguage(
       record->at(VIDEODB_DETAILS_EPISODE_TVSHOW_ORIGINAL_LANGUAGE).get_asString(),
-      CVideoInfoTag::LanguageProcessing::PROCESSING_NONE);
+      CVideoInfoTag::LanguageTagSource::SOURCE_INTERNAL);
 
   details.SetResumePoint(record->at(VIDEODB_DETAILS_EPISODE_RESUME_TIME).get_asInt(),
                          record->at(VIDEODB_DETAILS_EPISODE_TOTAL_TIME).get_asInt(),
@@ -13280,4 +13289,9 @@ std::vector<std::string> CVideoDatabase::GetUsedImages(
     CLog::LogF(LOGERROR, "failed");
   }
   return {};
+}
+
+void CVideoDatabase::SetTrailerForMovie(int idMovie, const std::string& trailer)
+{
+  SetSingleValue(VideoDbContentType::MOVIES, VIDEODB_ID_TRAILER, idMovie, trailer);
 }

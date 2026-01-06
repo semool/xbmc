@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.18)
 if(WIN32)
-  cmake_minimum_required(VERSION 3.28)
+  cmake_minimum_required(VERSION 3.30.6)
 endif()
 
 project(kodi LANGUAGES CXX C ASM)
@@ -123,6 +123,7 @@ dependent_option(ENABLE_INTERNAL_FMT "Enable internal fmt?")
 dependent_option(ENABLE_INTERNAL_LIBMICROHTTPD  "Enable internal libmicrohttpd?")
 dependent_option(ENABLE_INTERNAL_NFS "Enable internal libnfs?")
 dependent_option(ENABLE_INTERNAL_PCRE2 "Enable internal pcre2?")
+dependent_option(ENABLE_INTERNAL_MARIADBCLIENT "Enable internal mariadb-c-connector?")
 dependent_option(ENABLE_INTERNAL_NLOHMANNJSON "Enable internal nlohmannjson?")
 dependent_option(ENABLE_INTERNAL_XSLT "Enable internal libxslt?")
 

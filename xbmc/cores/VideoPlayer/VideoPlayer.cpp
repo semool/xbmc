@@ -64,6 +64,7 @@
 #include "windowing/GraphicContext.h"
 #include "windowing/WinSystem.h"
 
+#include <cassert>
 #include <chrono>
 #include <iterator>
 #include <limits>
@@ -3152,7 +3153,8 @@ void CVideoPlayer::HandleMessages()
     }
     else if (pMsg->IsType(CDVDMsg::PLAYER_SETSPEED))
     {
-      int speed = std::static_pointer_cast<CDVDMsgPlayerSetSpeed>(pMsg)->GetSpeed();
+      const auto msg = std::static_pointer_cast<CDVDMsgPlayerSetSpeed>(pMsg);
+      const int speed = msg->GetSpeed();
 
       // correct our current clock, as it would start going wrong otherwise
       if (m_State.timestamp > 0)
@@ -3181,10 +3183,18 @@ void CVideoPlayer::HandleMessages()
         pvrinputstream->Pause(speed == 0);
       }
 
-      // do a seek after rewind, clock is not in sync with current pts
-      if ((speed == DVD_PLAYSPEED_NORMAL) &&
-          (m_playSpeed != DVD_PLAYSPEED_NORMAL) &&
-          (m_playSpeed != DVD_PLAYSPEED_PAUSE))
+      const bool isTempoSpeed = msg->IsTempo();
+      assert(!(isTempoSpeed &&
+               !m_processInfo->IsTempoAllowed(static_cast<float>(speed) / DVD_PLAYSPEED_NORMAL)));
+
+      const bool wasFFRW =
+          (m_playSpeed != DVD_PLAYSPEED_NORMAL && m_playSpeed != DVD_PLAYSPEED_PAUSE &&
+           !m_processInfo->IsTempoAllowed(static_cast<float>(m_playSpeed) / DVD_PLAYSPEED_NORMAL));
+
+      // Seek when returning to normal 1.0x or tempo play from FF/RW
+      // back from RW: clock is not in sync with current pts
+      // back from FF: fill the empty audio queue to avoid no audio
+      if ((speed == DVD_PLAYSPEED_NORMAL || isTempoSpeed) && wasFFRW)
       {
         double iTime = m_VideoPlayerVideo->GetCurrentPts();
         if (iTime == DVD_NOPTS_VALUE)
@@ -3201,7 +3211,7 @@ void CVideoPlayer::HandleMessages()
         m_messenger.Put(std::make_shared<CDVDMsgPlayerSeek>(mode));
       }
 
-      if (std::static_pointer_cast<CDVDMsgPlayerSetSpeed>(pMsg)->IsTempo())
+      if (isTempoSpeed)
         m_processInfo->SetTempo(static_cast<float>(speed) / DVD_PLAYSPEED_NORMAL);
       else
         m_processInfo->SetSpeed(static_cast<float>(speed) / DVD_PLAYSPEED_NORMAL);
@@ -3592,6 +3602,11 @@ void CVideoPlayer::SetSubtitleVisible(bool bVisible)
   m_messenger.Put(
       std::make_shared<CDVDMsgBool>(CDVDMsg::PLAYER_SET_SUBTITLESTREAM_VISIBLE, bVisible));
   m_processInfo->GetVideoSettingsLocked().SetSubtitleVisible(bVisible);
+  CVariant data;
+  data["player"]["playerid"] = m_item.GetProperty("playlist_type_hint").asInteger32(-1);
+  data["property"]["subtitleenabled"] = bVisible;
+  CServiceBroker::GetAnnouncementManager()->Announce(ANNOUNCEMENT::Player, "OnPropertyChanged",
+                                                     data);
 }
 
 void CVideoPlayer::SetEnableStream(CCurrentStream& current, bool isEnabled)
@@ -5572,6 +5587,7 @@ void CVideoPlayer::SetVideoStream(int iStream)
   m_messenger.Put(std::make_shared<CDVDMsgPlayerSetVideoStream>(iStream));
   m_processInfo->GetVideoSettingsLocked().SetVideoStream(iStream);
   SynchronizeDemuxer();
+  NotifyVideoUpdate();
 }
 
 void CVideoPlayer::GetAudioStreamInfo(int index, AudioStreamInfo& info) const
@@ -5619,6 +5635,7 @@ void CVideoPlayer::SetAudioStream(int iStream)
   m_messenger.Put(std::make_shared<CDVDMsgPlayerSetAudioStream>(iStream));
   m_processInfo->GetVideoSettingsLocked().SetAudioStream(iStream);
   SynchronizeDemuxer();
+  NotifyAudioUpdate();
 }
 
 void CVideoPlayer::GetSubtitleStreamInfo(int index, SubtitleStreamInfo& info) const
@@ -5642,6 +5659,7 @@ void CVideoPlayer::GetSubtitleStreamInfo(int index, SubtitleStreamInfo& info) co
   if (s.type == StreamType::NONE)
     info.name += "(Invalid)";
 
+  info.valid = true;
   info.language = s.language;
   info.codecName = s.codec;
   info.flags = s.flags;
@@ -5653,6 +5671,7 @@ void CVideoPlayer::SetSubtitle(int iStream)
 {
   m_messenger.Put(std::make_shared<CDVDMsgPlayerSetSubtitleStream>(iStream));
   m_processInfo->GetVideoSettingsLocked().SetSubtitleStream(iStream);
+  NotifySubtitleUpdate(SubtitleChange::FLAG_STREAMINFO_CHANGE);
 }
 
 int CVideoPlayer::GetSubtitleCount() const
@@ -5688,4 +5707,85 @@ int CVideoPlayer::GetProgramsCount() const
 void CVideoPlayer::SetUpdateStreamDetails()
 {
   m_messenger.Put(std::make_shared<CDVDMsg>(CDVDMsg::PLAYER_SET_UPDATE_STREAM_DETAILS));
+}
+
+void CVideoPlayer::NotifySubtitleUpdate(int flags)
+{
+  CVariant data;
+  data["player"]["playerid"] = m_item.GetProperty("playlist_type_hint").asInteger32(-1);
+  if ((flags & SubtitleChange::FLAG_STATUS_CHANGE) != 0)
+  {
+    data["property"]["subtitleenabled"] = m_processInfo->GetVideoSettings().m_SubtitleOn;
+  }
+  if ((flags & SubtitleChange::FLAG_STREAMINFO_CHANGE) != 0)
+  {
+    const int stream = m_processInfo->GetVideoSettings().m_SubtitleStream;
+    SubtitleStreamInfo info;
+    GetSubtitleStreamInfo(stream, info);
+    if (!info.valid)
+    {
+      // Only proceed if we're also sending status change
+      if ((flags & SubtitleChange::FLAG_STATUS_CHANGE) == 0)
+        return;
+    }
+    else
+    {
+      // Only add stream info if valid
+      CVariant contentEntry(CVariant::VariantTypeObject);
+      contentEntry["index"] = stream;
+      contentEntry["isdefault"] = (info.flags & StreamFlags::FLAG_DEFAULT) != 0;
+      contentEntry["isforced"] = (info.flags & StreamFlags::FLAG_FORCED) != 0;
+      contentEntry["isimpaired"] = (info.flags & StreamFlags::FLAG_VISUAL_IMPAIRED) != 0;
+      contentEntry["language"] = info.language;
+      contentEntry["name"] = info.name;
+      data["property"]["currentsubtitle"] = contentEntry;
+    }
+  }
+  CServiceBroker::GetAnnouncementManager()->Announce(ANNOUNCEMENT::Player, "OnPropertyChanged",
+                                                     data);
+}
+
+void CVideoPlayer::NotifyAudioUpdate()
+{
+  AudioStreamInfo info;
+  const int stream = m_processInfo->GetVideoSettings().m_AudioStream;
+  GetAudioStreamInfo(stream, info);
+  if (!info.valid)
+    return;
+  CVariant data;
+  data["player"]["playerid"] = m_item.GetProperty("playlist_type_hint").asInteger32(-1);
+  CVariant contentEntry(CVariant::VariantTypeObject);
+  contentEntry["index"] = stream;
+  contentEntry["bitrate"] = info.bitrate;
+  contentEntry["channels"] = info.channels;
+  contentEntry["codec"] = info.codecDesc;
+  contentEntry["isdefault"] = (info.flags & StreamFlags::FLAG_DEFAULT) != 0;
+  contentEntry["isimpaired"] = (info.flags & StreamFlags::FLAG_HEARING_IMPAIRED) != 0;
+  contentEntry["isoriginal"] = (info.flags & StreamFlags::FLAG_ORIGINAL) != 0;
+  contentEntry["language"] = info.language;
+  contentEntry["name"] = info.name;
+  data["property"]["currentaudiostream"] = contentEntry;
+  CServiceBroker::GetAnnouncementManager()->Announce(ANNOUNCEMENT::Player, "OnPropertyChanged",
+                                                     data);
+}
+
+void CVideoPlayer::NotifyVideoUpdate()
+{
+  VideoStreamInfo info;
+  const int stream = m_processInfo->GetVideoSettings().m_VideoStream;
+  GetVideoStreamInfo(stream, info);
+  if (!info.valid)
+    return;
+  CVariant data;
+  data["player"]["playerid"] = m_item.GetProperty("playlist_type_hint").asInteger32(-1);
+  CVariant contentEntry(CVariant::VariantTypeObject);
+  contentEntry["index"] = stream;
+  contentEntry["codec"] = info.codecName;
+  contentEntry["height"] = info.height;
+  contentEntry["width"] = info.width;
+  contentEntry["language"] = info.language;
+  contentEntry["name"] = info.name;
+  data["property"]["currentvideostream"] = contentEntry;
+  CServiceBroker::GetAnnouncementManager()->Announce(ANNOUNCEMENT::Player, "OnPropertyChanged",
+                                                     data);
 }
