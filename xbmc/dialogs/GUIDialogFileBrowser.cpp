@@ -19,6 +19,7 @@
 #include "ServiceBroker.h"
 #include "URL.h"
 #include "Util.h"
+#include "dialogs/GUIDialogBusy.h"
 #include "filesystem/Directory.h"
 #include "filesystem/File.h"
 #include "filesystem/MultiPathDirectory.h"
@@ -359,7 +360,13 @@ void CGUIDialogFileBrowser::Update(const std::string &strDirectory)
     CFileItemList items;
     std::string strParentPath;
 
-    if (!m_rootDir.GetDirectory(pathToUrl, items, m_useFileDirectories, false))
+    CGetDirectoryItems runnable(m_rootDir, pathToUrl, items, m_useFileDirectories, false);
+    if (!CGUIDialogBusy::Wait(&runnable, 100, true))
+    {
+      // cancelled
+      return;
+    }
+    else if (!runnable.GetResult())
     {
       CLog::Log(LOGERROR, "CGUIDialogFileBrowser::GetDirectory({}) failed",
                 pathToUrl.GetRedacted());
@@ -656,7 +663,7 @@ bool CGUIDialogFileBrowser::ShowAndGetImage(const CFileItemList& items,
     result = browser->m_selectedPath;
     if (result == "image://Browse")
     { // "Browse for thumb"
-      CServiceBroker::GetGUI()->GetWindowManager().Remove(browser->GetID());
+      CServiceBroker::GetGUI()->GetWindowManager().Delete(browser->GetID());
       return ShowAndGetImage(shares, g_localizeStrings.Get(label), result);
     }
   }
@@ -664,7 +671,7 @@ bool CGUIDialogFileBrowser::ShowAndGetImage(const CFileItemList& items,
   if (flip)
     *flip = browser->m_bFlip != 0;
 
-  CServiceBroker::GetGUI()->GetWindowManager().Remove(browser->GetID());
+  CServiceBroker::GetGUI()->GetWindowManager().Delete(browser->GetID());
   return confirmed;
 }
 
@@ -738,7 +745,7 @@ bool CGUIDialogFileBrowser::ShowAndGetFile(const std::vector<CMediaSource>& shar
   bool confirmed(browser->IsConfirmed());
   if (confirmed)
     path = browser->m_selectedPath;
-  CServiceBroker::GetGUI()->GetWindowManager().Remove(browser->GetID());
+  CServiceBroker::GetGUI()->GetWindowManager().Delete(browser->GetID());
   return confirmed;
 }
 
@@ -794,13 +801,13 @@ bool CGUIDialogFileBrowser::ShowAndGetFile(const std::string &directory, const s
     path = browser->m_selectedPath;
   if (path == "file://Browse")
   { // "Browse for thumb"
-    CServiceBroker::GetGUI()->GetWindowManager().Remove(browser->GetID());
+    CServiceBroker::GetGUI()->GetWindowManager().Delete(browser->GetID());
     std::vector<CMediaSource> shares;
     CServiceBroker::GetMediaManager().GetLocalDrives(shares);
 
     return ShowAndGetFile(shares, mask, heading, path, useThumbs,useFileDirectories);
   }
-  CServiceBroker::GetGUI()->GetWindowManager().Remove(browser->GetID());
+  CServiceBroker::GetGUI()->GetWindowManager().Delete(browser->GetID());
   return confirmed;
 }
 
@@ -832,7 +839,7 @@ bool CGUIDialogFileBrowser::ShowAndGetFileList(const std::vector<CMediaSource>& 
     else
       path.push_back(browser->m_selectedPath);
   }
-  CServiceBroker::GetGUI()->GetWindowManager().Remove(browser->GetID());
+  CServiceBroker::GetGUI()->GetWindowManager().Delete(browser->GetID());
   return confirmed;
 }
 
@@ -903,7 +910,7 @@ bool CGUIDialogFileBrowser::ShowAndGetSource(
   if (confirmed)
     path = browser->m_selectedPath;
 
-  CServiceBroker::GetGUI()->GetWindowManager().Remove(browser->GetID());
+  CServiceBroker::GetGUI()->GetWindowManager().Delete(browser->GetID());
   return confirmed;
 }
 
