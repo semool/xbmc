@@ -214,7 +214,8 @@ void CGUIIncludes::LoadIncludes(const TiXmlElement *node)
     }
     else if (child->Attribute("file"))
     {
-      std::string file = g_SkinInfo->GetSkinPath(child->Attribute("file"));
+      auto skin = CServiceBroker::GetGUI()->GetSkinInfo();
+      std::string file = skin ? skin->GetSkinPath(child->Attribute("file")) : "";
       const char *condition = child->Attribute("condition");
 
       if (condition)
@@ -243,22 +244,26 @@ void CGUIIncludes::FlattenExpressions()
 void CGUIIncludes::FlattenExpression(std::string &expression, const std::vector<std::string> &resolved)
 {
   std::string original(expression);
-  GUIINFO::CGUIInfoLabel::ReplaceSpecialKeywordReferences(expression, "EXP", [&](const std::string &expressionName) -> std::string {
-    if (std::find(resolved.begin(), resolved.end(), expressionName) != resolved.end())
-    {
-      CLog::Log(LOGERROR, "Skin has a circular expression \"{}\": {}", resolved.back(), original);
-      return std::string();
-    }
-    auto it = m_expressions.find(expressionName);
-    if (it == m_expressions.end())
-      return std::string();
+  GUIINFO::CGUIInfoLabel::ReplaceSpecialKeywordReferences(
+      expression, "EXP",
+      [&](const std::string& expressionName) -> std::string
+      {
+        if (std::ranges::find(resolved, expressionName) != resolved.end())
+        {
+          CLog::Log(LOGERROR, "Skin has a circular expression \"{}\": {}", resolved.back(),
+                    original);
+          return std::string();
+        }
+        auto it = m_expressions.find(expressionName);
+        if (it == m_expressions.end())
+          return std::string();
 
-    std::vector<std::string> rescopy = resolved;
-    rescopy.push_back(expressionName);
-    FlattenExpression(it->second, rescopy);
+        std::vector<std::string> rescopy = resolved;
+        rescopy.push_back(expressionName);
+        FlattenExpression(it->second, rescopy);
 
-    return it->second;
-  });
+        return it->second;
+      });
 }
 
 void CGUIIncludes::FlattenSkinVariableConditions()
@@ -415,7 +420,9 @@ void CGUIIncludes::ResolveIncludes(TiXmlElement *node, std::map<INFO::InfoPtr, b
       }
       else
       {
-        Load(g_SkinInfo->GetSkinPath(file));
+        auto skin = CServiceBroker::GetGUI()->GetSkinInfo();
+        if (skin)
+          Load(skin->GetSkinPath(file));
       }
     }
 
