@@ -151,6 +151,9 @@ class CVideoDatabase : public CDatabase
 {
   struct FileInformation
   {
+    // user-defined ctor required for XCode 15.2 and emplace_back
+    FileInformation(std::string&& newPath, int newFileId, int newVvId, std::string&& newHash);
+
     std::string path;
     int fileId{0};
     int vvId{0};
@@ -988,7 +991,6 @@ public:
                             VideoAssetType asset,
                             CFileItemList& items);
   bool SetVideoVersionDefaultArt(int dbId, int idFrom, const MediaType& mediaType);
-  void InitializeVideoVersionTypeTable();
   void UpdateVideoVersionTypeTable();
   bool GetVideoVersionsNav(const std::string& strBaseDir,
                            CFileItemList& items,
@@ -1165,13 +1167,6 @@ private:
   void CreateTables() override;
   void CreateAnalytics() override;
   void UpdateTables(int version) override;
-  void CreateLinkIndex(const char *table);
-  void CreateForeignLinkIndex(const char *table, const char *foreignkey);
-
-  /*! \brief (Re)Create the generic database views for movies, tvshows,
-     episodes and music videos
-   */
-  virtual void CreateViews();
 
   /*! \brief Helper to get a database id given a query.
    Returns an integer, -1 if not found, and greater than 0 if found.

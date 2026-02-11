@@ -12,11 +12,13 @@
 #include "GUIControlProfiler.h"
 #include "GUIFont.h" // for XBFONT_* definitions
 #include "GUIMessage.h"
+#include "ServiceBroker.h"
 #include "guilib/guiinfo/GUIInfoLabels.h"
 #include "input/actions/Action.h"
 #include "input/actions/ActionIDs.h"
 #include "input/mouse/MouseEvent.h"
 #include "utils/StringUtils.h"
+#include "windowing/WinSystem.h"
 
 using namespace KODI;
 

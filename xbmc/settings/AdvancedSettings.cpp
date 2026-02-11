@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2005-2018 Team Kodi
+ *  Copyright (C) 2005-2026 Team Kodi
  *  This file is part of Kodi - https://kodi.tv
  *
  *  SPDX-License-Identifier: GPL-2.0-or-later
@@ -13,9 +13,10 @@
 #include "URL.h"
 #include "application/AppParams.h"
 #include "filesystem/SpecialProtocol.h"
-#include "guilib/LocalizeStrings.h"
 #include "network/DNSNameCache.h"
 #include "profiles/ProfileManager.h"
+#include "resources/LocalizeStrings.h"
+#include "resources/ResourcesComponent.h"
 #include "settings/Settings.h"
 #include "settings/SettingsComponent.h"
 #include "settings/lib/Setting.h"
@@ -100,6 +101,16 @@ void CAdvancedSettings::OnSettingsLoaded()
     CLog::Log(LOGINFO, "Disabled debug logging due to GUI setting. Level {}.", m_logLevel);
   }
   CServiceBroker::GetLogging().SetLogLevel(m_logLevel);
+
+  std::vector<AdvancedSettingsCallback> callbacks;
+  {
+    std::lock_guard lock{m_listCritSection};
+    callbacks.reserve(m_settingsLoadedCallbacks.size());
+    std::ranges::transform(m_settingsLoadedCallbacks, std::back_inserter(callbacks),
+                           [](const auto& pair) { return pair.second; });
+  }
+  for (auto& callback : callbacks)
+    callback();
 }
 
 void CAdvancedSettings::OnSettingsUnloaded()
@@ -115,6 +126,20 @@ void CAdvancedSettings::OnSettingChanged(const std::shared_ptr<const CSetting>& 
   const std::string &settingId = setting->GetId();
   if (settingId == CSettings::SETTING_DEBUG_SHOWLOGINFO)
     SetDebugMode(std::static_pointer_cast<const CSettingBool>(setting)->GetValue());
+}
+
+int CAdvancedSettings::RegisterSettingsLoadedCallback(AdvancedSettingsCallback callback)
+{
+  static int idx{0};
+  std::lock_guard lock{m_listCritSection};
+  m_settingsLoadedCallbacks[idx] = callback;
+  return ++idx;
+}
+
+void CAdvancedSettings::UnregisterSettingsLoadedCallback(int handle)
+{
+  std::lock_guard lock{m_listCritSection};
+  m_settingsLoadedCallbacks.erase(handle);
 }
 
 void CAdvancedSettings::Initialize(CSettingsManager& settingsMgr)
@@ -286,7 +311,7 @@ void CAdvancedSettings::Initialize()
                                         m_allExcludeFromScanRegExps.end());
 
   m_folderStackRegExps = CompileRegexes({
-      "(.*?)(?:[^\\/])((?:cd|dvd|p(?:(?:ar)?t)|dis[ck])[ _.-]*[0-9])$",
+      "^(.*?)[ _.-]*((?:cd|dvd|p(?:(?:ar)?t)|dis[ck])[ _.-]*[0-9])$",
       "()((?:p(?:(?:ar)?t)[ _.-]*[0-9]))$",
   });
 
@@ -329,7 +354,7 @@ void CAdvancedSettings::Initialize()
 
   // Build regex inserting local specific spelling of disc (xxx)
   // [ _.-]*\((?:xxx|dis[ck])[ _.-]*\d{1,3}\)$
-  std::string localeDiscStr{g_localizeStrings.Get(427)};
+  std::string localeDiscStr{CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(427)};
   if (!localeDiscStr.empty())
     localeDiscStr = EscapeSpecialChars(localeDiscStr) + "|";
   m_titleTrailingPartNumberRegExp =
@@ -496,8 +521,10 @@ void CAdvancedSettings::Initialize()
       ".png|.jpg|.jpeg|.bmp|.gif|.ico|.tif|.tiff|.tga|.pcx|.cbz|.zip|.rss|.webp|.jp2|.apng|.avif|.heif|.heic";
   m_musicExtensions = ".b4s|.nsv|.m4a|.flac|.aac|.strm|.pls|.rm|.rma|.mpa|.wav|.wma|.ogg|.mp3|.mp2|.m3u|.gdm|.imf|.m15|.sfx|.uni|.ac3|.dts|.cue|.aif|.aiff|.wpl|.xspf|.ape|.mac|.mpc|.mp+|.mpp|.shn|.zip|.wv|.dsp|.xsp|.xwav|.waa|.wvs|.wam|.gcm|.idsp|.mpdsp|.mss|.spt|.rsd|.sap|.cmc|.cmr|.dmc|.mpt|.mpd|.rmt|.tmc|.tm8|.tm2|.oga|.url|.pxml|.tta|.rss|.wtv|.mka|.tak|.opus|.dff|.dsf|.m4b|.dtshd";
   m_videoExtensions = ".m4v|.3g2|.3gp|.nsv|.tp|.ts|.ty|.strm|.pls|.rm|.rmvb|.mpd|.m3u|.m3u8|.ifo|.mov|.qt|.divx|.xvid|.bivx|.vob|.nrg|.img|.iso|.udf|.pva|.wmv|.asf|.asx|.ogm|.m2v|.avi|.bin|.dat|.mpg|.mpeg|.mp4|.mkv|.mk3d|.avc|.vp3|.svq3|.nuv|.viv|.dv|.fli|.flv|.001|.wpl|.xspf|.zip|.vdr|.dvr-ms|.xsp|.mts|.m2t|.m2ts|.evo|.ogv|.sdp|.avs|.rec|.url|.pxml|.vc1|.h264|.rcv|.rss|.mpls|.mpl|.webm|.bdmv|.bdm|.wtv|.trp|.f4v";
-  m_subtitlesExtensions = ".utf|.utf8|.utf-8|.sub|.srt|.smi|.rt|.txt|.ssa|.text|.ssa|.aqt|.jss|"
-                          ".ass|.vtt|.idx|.ifo|.zip|.sup";
+  m_subtitlesExtensions = ".utf|.utf8|.utf-8|.sub|.srt|.smi|.rt|.txt|.ssa|.text|.ssa|.aqt|.jss|."
+                          "ass|.vtt|.idx|.ifo|.zip|.sup";
+  m_archiveExtensions = ".tgz|.tbz2|.xz|.7z|.bz2|.gz|.tar|.rar|.zip";
+  m_compoundArchiveExtensions = ".tar.bz2|.tar.gz|.tar.xz";
   m_discStubExtensions = ".disc";
   // internal music extensions
   m_musicExtensions += "|.cdda";

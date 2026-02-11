@@ -22,6 +22,7 @@
 #include "input/mouse/MouseEvent.h"
 #include "input/mouse/MouseStat.h"
 #include "utils/log.h"
+#include "windowing/WinSystem.h"
 
 using namespace KODI;
 using namespace GUILIB;
@@ -192,9 +193,8 @@ void CGUIControl::DoRender()
   {
     bool hasStereo =
         m_stereo != 0.0f &&
-        CServiceBroker::GetWinSystem()->GetGfxContext().GetStereoMode() !=
-            RENDER_STEREO_MODE_MONO &&
-        CServiceBroker::GetWinSystem()->GetGfxContext().GetStereoMode() != RENDER_STEREO_MODE_OFF;
+        CServiceBroker::GetWinSystem()->GetGfxContext().GetStereoMode() != RenderStereoMode::MONO &&
+        CServiceBroker::GetWinSystem()->GetGfxContext().GetStereoMode() != RenderStereoMode::OFF;
 
     CServiceBroker::GetWinSystem()->GetGfxContext().SetTransform(m_cachedTransform);
     if (m_hasCamera)

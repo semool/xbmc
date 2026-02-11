@@ -8,6 +8,9 @@
 
 #include "GUIBorderedImage.h"
 
+#include "ServiceBroker.h"
+#include "windowing/WinSystem.h"
+
 CGUIBorderedImage::CGUIBorderedImage(int parentID,
                                      int controlID,
                                      float posX,

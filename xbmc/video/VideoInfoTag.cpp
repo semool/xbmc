@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2005-2018 Team Kodi
+ *  Copyright (C) 2005-2026 Team Kodi
  *  This file is part of Kodi - https://kodi.tv
  *
  *  SPDX-License-Identifier: GPL-2.0-or-later
@@ -9,8 +9,9 @@
 #include "VideoInfoTag.h"
 
 #include "ServiceBroker.h"
-#include "guilib/LocalizeStrings.h"
 #include "imagefiles/ImageFileURL.h"
+#include "resources/LocalizeStrings.h"
+#include "resources/ResourcesComponent.h"
 #include "settings/AdvancedSettings.h"
 #include "settings/SettingsComponent.h"
 #include "utils/Archive.h"
@@ -641,15 +642,14 @@ void CVideoInfoTag::Archive(CArchive& ar)
     m_cast.reserve(iCastSize);
     for (int i = 0; i < iCastSize; ++i)
     {
-      SActorInfo info;
+      SActorInfo& info = m_cast.emplace_back();
       ar >> info.strName;
       ar >> info.strRole;
       ar >> info.order;
       ar >> info.thumb;
       std::string strXml;
       ar >> strXml;
-      info.thumbUrl.ParseFromData(strXml);
-      m_cast.emplace_back(std::move(info));
+      info.thumbUrl.ParseFromData(std::move(strXml));
     }
 
     m_set.Archive(ar);
@@ -1027,8 +1027,10 @@ std::string CVideoInfoTag::GetCast(const std::string& separator,
     if (it->strRole.empty() || !bIncludeRole)
       character = StringUtils::Format("{}{}", it->strName, sep);
     else
-      character = StringUtils::Format("{} {} {}{}", it->strName, g_localizeStrings.Get(20347),
-                                      it->strRole, sep);
+      character = StringUtils::Format(
+          "{} {} {}{}", it->strName,
+          CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(20347), it->strRole,
+          sep);
     strLabel += character;
   }
   return StringUtils::TrimRight(strLabel, sep);
@@ -1311,7 +1313,8 @@ void CVideoInfoTag::ParseNative(const TiXmlElement* movie, bool prioritise)
     const TiXmlNode *actor = node->FirstChild("name");
     if (actor && actor->FirstChild())
     {
-      SActorInfo info;
+      SActorInfo& info = m_cast.emplace_back();
+
       info.strName = actor->FirstChild()->Value();
 
       if (XMLUtils::GetString(node, "role", value))
@@ -1327,7 +1330,6 @@ void CVideoInfoTag::ParseNative(const TiXmlElement* movie, bool prioritise)
       const char* clear=node->Attribute("clear");
       if (clear && StringUtils::CompareNoCase(clear, "true"))
         m_cast.clear();
-      m_cast.emplace_back(std::move(info));
     }
     node = node->NextSiblingElement("actor");
   }

@@ -11,15 +11,13 @@
 #include "cores/AudioEngine/AESinkFactory.h"
 #include "cores/AudioEngine/Utils/AEDeviceInfo.h"
 #include "cores/AudioEngine/Utils/AEUtil.h"
-#include "utils/StringUtils.h"
 #include "utils/SystemInfo.h"
-#include "utils/TimeUtils.h"
-#include "utils/XTimeUtils.h"
 #include "utils/log.h"
 
 #include "platform/win32/WIN32Util.h"
 
 #include <algorithm>
+#include <chrono>
 #include <stdint.h>
 
 #include <Audioclient.h>
@@ -28,6 +26,15 @@
 #ifdef TARGET_WINDOWS_DESKTOP
 #  pragma comment(lib, "Avrt.lib")
 #endif // TARGET_WINDOWS_DESKTOP
+
+using namespace Microsoft::WRL;
+using namespace std::chrono_literals;
+
+namespace
+{
+constexpr auto minPcmPeriod{20ms};
+constexpr auto minPassthroughPeriod{50ms};
+} // namespace
 
 const IID IID_IAudioRenderClient = __uuidof(IAudioRenderClient);
 const IID IID_IAudioClock = __uuidof(IAudioClock);
@@ -50,8 +57,6 @@ inline void SafeRelease(T **ppT)
     *ppT = nullptr;
   }
 }
-
-using namespace Microsoft::WRL;
 
 CAESinkWASAPI::CAESinkWASAPI()
 {
@@ -89,18 +94,11 @@ bool CAESinkWASAPI::Initialize(AEAudioFormat &format, std::string &device)
     return false;
 
   m_device = device;
-  bool bdefault = false;
   HRESULT hr = S_FALSE;
 
-  /* Save requested format */
-  /* Clear returned format */
-  sinkReqFormat = format.m_dataFormat;
-  sinkRetFormat = AE_FMT_INVALID;
+  const bool bdefault = device.find("default") != std::string::npos;
 
-  if(StringUtils::EndsWithNoCase(device, std::string("default")))
-    bdefault = true;
-
-  if(!bdefault)
+  if (!bdefault)
   {
     hr = CAESinkFactoryWin::ActivateWASAPIDevice(device, &m_pDevice);
     EXIT_ON_FAILURE(hr, "Retrieval of WASAPI endpoint failed.")
@@ -108,7 +106,7 @@ bool CAESinkWASAPI::Initialize(AEAudioFormat &format, std::string &device)
 
   if (!m_pDevice)
   {
-    if(!bdefault)
+    if (!bdefault)
     {
       CLog::LogF(LOGINFO,
                  "Could not locate the device named \"{}\" in the list of WASAPI endpoint devices. "
@@ -138,9 +136,7 @@ bool CAESinkWASAPI::Initialize(AEAudioFormat &format, std::string &device)
     goto failed;
   }
 
-  format.m_frames = m_uiBufferLen;
   m_format = format;
-  sinkRetFormat = format.m_dataFormat;
 
   hr = m_pAudioClient->GetService(IID_IAudioRenderClient, reinterpret_cast<void**>(m_pRenderClient.ReleaseAndGetAddressOf()));
   EXIT_ON_FAILURE(hr, "Could not initialize the WASAPI render client interface.")
@@ -876,49 +872,86 @@ initialize:
       CLog::LogF(LOGERROR, "unable to set audio category, {}", CWIN32Util::FormatHRESULT(hr));
   }
 
-  REFERENCE_TIME audioSinkBufferDurationMsec{};
-
   const bool isPassthrough = (format.m_dataFormat == AE_FMT_RAW);
+  const auto targetPeriod = isPassthrough ? minPassthroughPeriod : minPcmPeriod;
 
-  if (isPassthrough) // 50ms period (same as before)
+  REFERENCE_TIME defaultDevicePeriodHns{};
+
+  if (FAILED(hr = m_pAudioClient->GetDevicePeriod(&defaultDevicePeriodHns, nullptr)))
   {
-    audioSinkBufferDurationMsec = static_cast<REFERENCE_TIME>(500000);
+    CLog::LogF(LOGERROR, "unable to retrieve the device's default period ({})",
+               CWIN32Util::FormatHRESULT(hr));
+    return false;
+  }
+
+  CLog::LogF(LOGDEBUG, "Default period: {:.1f}ms",
+             static_cast<float>(defaultDevicePeriodHns) / 10000.0f);
+
+  // Find the first multiple of the default device period larger or equal to the desired minimum
+  // buffer duration
+  // note: the default device period is meant for shared mode but offers a strong guarantee of
+  // compatibility and we're not a pro audio app that requires the min latency possible.
+
+  const auto devicePeriod = std::chrono::nanoseconds(defaultDevicePeriodHns * 100);
+  const int multiplier =
+      (targetPeriod / devicePeriod) + ((targetPeriod % devicePeriod == 0ns) ? 0 : 1);
+  const auto period = multiplier * devicePeriod;
+
+  if (isPassthrough)
     format.m_dataFormat = AE_FMT_S16NE;
-  }
-  else // PCM: 20ms period (same as XAudio and DirectSound)
-  {
-    audioSinkBufferDurationMsec = static_cast<REFERENCE_TIME>(200000);
-  }
 
-  hr = m_pAudioClient->Initialize(AUDCLNT_SHAREMODE_EXCLUSIVE, AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_NOPERSIST,
-                                    audioSinkBufferDurationMsec, audioSinkBufferDurationMsec, &wfxex.Format, NULL);
-
-  if (hr == AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED)
+  auto AudioClientInitialize = [this](REFERENCE_TIME periodHns, WAVEFORMATEX* format,
+                                      bool needNewClient) -> HRESULT
   {
-    /* WASAPI requires aligned buffer */
-    /* Get the next aligned frame     */
-    hr = m_pAudioClient->GetBufferSize(&m_uiBufferLen);
-    if (FAILED(hr))
+    if (needNewClient && m_pAudioClient != nullptr)
     {
-      CLog::LogF(LOGERROR, "GetBufferSize Failed : {}", CWIN32Util::FormatHRESULT(hr));
-      return false;
+      if (HRESULT hr = m_pDevice->Activate(m_pAudioClient.ReleaseAndGetAddressOf()); FAILED(hr))
+      {
+        CLog::LogF(LOGERROR, "Device Activation Failed : {}", CWIN32Util::FormatHRESULT(hr));
+        return hr;
+      }
     }
 
-    audioSinkBufferDurationMsec = (REFERENCE_TIME) ((10000.0 * 1000 / wfxex.Format.nSamplesPerSec * m_uiBufferLen) + 0.5);
+    const AUDCLNT_SHAREMODE mode = AUDCLNT_SHAREMODE_EXCLUSIVE;
+    const DWORD flags = AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_NOPERSIST;
+    return m_pAudioClient->Initialize(mode, flags, periodHns, periodHns, format, NULL);
+  };
 
-    /* Release the previous allocations */
-    /* Create a new audio client */
-    hr = m_pDevice->Activate(m_pAudioClient.ReleaseAndGetAddressOf());
-    if (FAILED(hr))
+  REFERENCE_TIME bufferHns{period.count() / 100};
+  bool needNewClient = false;
+
+  do
+  {
+    hr = AudioClientInitialize(bufferHns, &wfxex.Format, needNewClient);
+
+    if (hr == AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED)
     {
-      CLog::LogF(LOGERROR, "Device Activation Failed : {}", CWIN32Util::FormatHRESULT(hr));
-      return false;
-    }
+      // WASAPI requires aligned buffer. Get the next aligned frame
+      UINT32 numBufferFrames;
+      if (FAILED(hr = m_pAudioClient->GetBufferSize(&numBufferFrames)))
+      {
+        CLog::LogF(LOGERROR, "GetBufferSize Failed : {}", CWIN32Util::FormatHRESULT(hr));
+        return false;
+      }
 
-    /* Open the stream and associate it with an audio session */
-    hr = m_pAudioClient->Initialize(AUDCLNT_SHAREMODE_EXCLUSIVE, AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_NOPERSIST,
-                                      audioSinkBufferDurationMsec, audioSinkBufferDurationMsec, &wfxex.Format, NULL);
-  }
+      bufferHns = static_cast<REFERENCE_TIME>(
+          (10000.0 * 1000 / wfxex.Format.nSamplesPerSec * numBufferFrames) + 0.5);
+      needNewClient = true;
+    }
+    else if (hr == AUDCLNT_E_BUFFER_SIZE_ERROR || hr == AUDCLNT_E_INVALID_DEVICE_PERIOD ||
+             hr == E_OUTOFMEMORY)
+    {
+      // Requested buffer was too large, try again with a duration reduced by the min device period
+      bufferHns -= defaultDevicePeriodHns;
+      needNewClient = false;
+    }
+    else
+    {
+      // Success or HRESULT without dedicated handling
+      break;
+    }
+  } while (bufferHns >= defaultDevicePeriodHns);
+
   if (FAILED(hr))
   {
     CLog::LogF(LOGERROR, "Failed to initialize WASAPI in exclusive mode - {}.",
@@ -936,7 +969,7 @@ initialize:
     CLog::Log(LOGDEBUG, "  Enc. Channels   : {}", wfxex_iec61937.dwEncodedChannelCount);
     CLog::Log(LOGDEBUG, "  Enc. Samples/Sec: {}", wfxex_iec61937.dwEncodedSamplesPerSec);
     CLog::Log(LOGDEBUG, "  Channel Mask    : {}", wfxex.dwChannelMask);
-    CLog::Log(LOGDEBUG, "  Periodicty      : {}", audioSinkBufferDurationMsec);
+    CLog::Log(LOGDEBUG, "  Periodicity (ms): {:.1f}", static_cast<float>(bufferHns) / 10000.0f);
     return false;
   }
 
@@ -957,12 +990,15 @@ initialize:
   m_sinkLatency = static_cast<double>(hnsLatency * 2) / 10000000; // 100ns intervals to s
 
   // Get the buffer size and calculate the frames for AE
-  hr = m_pAudioClient->GetBufferSize(&m_uiBufferLen);
+  UINT32 numBufferFrames{0};
+  hr = m_pAudioClient->GetBufferSize(&numBufferFrames);
   if (FAILED(hr))
   {
     CLog::LogF(LOGERROR, "GetBufferSize Failed : {}", CWIN32Util::FormatHRESULT(hr));
     return false;
   }
+
+  format.m_frames = numBufferFrames;
 
   CLog::LogF(LOGINFO, "WASAPI Exclusive Mode Sink Initialized using: {}, {}, {}",
              CAEUtil::DataFormatToStr(format.m_dataFormat), wfxex.Format.nSamplesPerSec,
@@ -981,9 +1017,9 @@ initialize:
   CLog::Log(LOGDEBUG, "  Format cBSize   : {}", wfxex.Format.cbSize);
   CLog::Log(LOGDEBUG, "  Channel Layout  : {}", ((std::string)format.m_channelLayout));
   CLog::Log(LOGDEBUG, "  Channel Mask    : {}", wfxex.dwChannelMask);
-  CLog::Log(LOGDEBUG, "  Frames          : {}", m_uiBufferLen);
+  CLog::Log(LOGDEBUG, "  Frames          : {}", format.m_frames);
   CLog::Log(LOGDEBUG, "  Frame Size      : {}", format.m_frameSize);
-  CLog::Log(LOGDEBUG, "  Periodicity (ms): {:.1f}", (float)audioSinkBufferDurationMsec / 10000.0f);
+  CLog::Log(LOGDEBUG, "  Periodicity (ms): {:.1f}", static_cast<float>(bufferHns) / 10000.0f);
   CLog::Log(LOGDEBUG, "  Latency (s)     : {:.3f}", m_sinkLatency);
 
   return true;
@@ -994,10 +1030,11 @@ void CAESinkWASAPI::Drain()
   if(!m_pAudioClient)
     return;
 
-  AEDelayStatus status;
-  GetDelay(status);
+  WriteLastBuffer();
 
-  KODI::TIME::Sleep(std::chrono::milliseconds(static_cast<int>(status.GetDelay() * 500)));
+  // Wait for last data in buffer to play before stopping (current buffer + WriteLastBuffer).
+  // If WriteLastBuffer() fails, it doesn't matter wait for the time of two buffers anyway.
+  KODI::TIME::Sleep(std::chrono::milliseconds(static_cast<int>(m_sinkLatency * 1000)));
 
   if (m_running)
   {
@@ -1013,4 +1050,64 @@ void CAESinkWASAPI::Drain()
     }
   }
   m_running = false;
+}
+
+void CAESinkWASAPI::WriteLastBuffer()
+{
+  if (!m_initialized || !m_running)
+    return;
+
+  // complete pending m_buffer with silence or generate one new m_buffer of silence
+  uint8_t* buffer = m_buffer.data();
+  unsigned int frames = m_format.m_frames;
+  if (m_bufferPtr != 0)
+  {
+    frames = m_format.m_frames - m_bufferPtr;
+    buffer += m_bufferPtr * m_format.m_frameSize;
+  }
+  CAEUtil::GenerateSilence(m_format.m_dataFormat, m_format.m_frameSize, buffer, frames);
+
+  LARGE_INTEGER timerStart{};
+  QueryPerformanceCounter(&timerStart);
+
+  // wait for buffer available
+  if (WaitForSingleObject(m_needDataEvent, 1100) != WAIT_OBJECT_0)
+  {
+    CLog::LogF(LOGERROR, "Endpoint Buffer timed out");
+    return;
+  }
+
+  LARGE_INTEGER timerStop{};
+  QueryPerformanceCounter(&timerStop);
+  const LONGLONG timerDiff = timerStop.QuadPart - timerStart.QuadPart;
+  const double timerElapsed = static_cast<double>(timerDiff) * 1000.0 / m_timerFreq.QuadPart;
+
+  if (timerElapsed < 3.0)
+  {
+    CLog::LogF(LOGWARNING, "Dropped last buffer data because there is a possible buffer underrun");
+    return;
+  }
+
+  // get buffer to write data
+  BYTE* buf;
+  HRESULT hr = m_pRenderClient->GetBuffer(m_format.m_frames, &buf);
+  if (FAILED(hr))
+  {
+    CLog::LogF(LOGERROR, "GetBuffer failed due to {}", CWIN32Util::FormatHRESULT(hr));
+    return;
+  }
+
+  // fill buffer
+  memcpy(buf, m_buffer.data(), m_format.m_frames * m_format.m_frameSize);
+
+  // pass back to the audio driver
+  hr = m_pRenderClient->ReleaseBuffer(m_format.m_frames, 0);
+  if (FAILED(hr))
+  {
+    CLog::LogF(LOGERROR, "ReleaseBuffer failed due to {}.", CWIN32Util::FormatHRESULT(hr));
+    return;
+  }
+
+  m_sinkFrames += m_format.m_frames;
+  m_bufferPtr = 0;
 }

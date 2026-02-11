@@ -23,7 +23,6 @@
 #include "guilib/GUIComponent.h"
 #include "guilib/GUILabelControl.h"
 #include "guilib/GUIWindowManager.h"
-#include "guilib/LocalizeStrings.h"
 #include "guilib/Texture.h"
 #include "imagefiles/ImageFileURL.h"
 #include "input/actions/Action.h"
@@ -35,6 +34,8 @@
 #include "pictures/SlideShowDelegator.h"
 #include "playlists/PlayListTypes.h"
 #include "rendering/RenderSystem.h"
+#include "resources/LocalizeStrings.h"
+#include "resources/ResourcesComponent.h"
 #include "settings/DisplaySettings.h"
 #include "settings/Settings.h"
 #include "settings/SettingsComponent.h"
@@ -44,6 +45,7 @@
 #include "utils/XTimeUtils.h"
 #include "utils/log.h"
 #include "video/VideoFileItemClassify.h"
+#include "windowing/WinSystem.h"
 
 #include <memory>
 #include <random>
@@ -1021,7 +1023,11 @@ void CGUIWindowSlideShow::RenderErrorMessage()
   }
 
   CGUIFont *pFont = static_cast<const CGUILabelControl*>(control)->GetLabelInfo().font;
-  CGUITextLayout::DrawText(pFont, 0.5f*CServiceBroker::GetWinSystem()->GetGfxContext().GetWidth(), 0.5f*CServiceBroker::GetWinSystem()->GetGfxContext().GetHeight(), 0xffffffff, 0, g_localizeStrings.Get(747), XBFONT_CENTER_X | XBFONT_CENTER_Y);
+  CGUITextLayout::DrawText(pFont, 0.5f * CServiceBroker::GetWinSystem()->GetGfxContext().GetWidth(),
+                           0.5f * CServiceBroker::GetWinSystem()->GetGfxContext().GetHeight(),
+                           0xffffffff, 0,
+                           CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(747),
+                           XBFONT_CENTER_X | XBFONT_CENTER_Y);
 }
 
 bool CGUIWindowSlideShow::OnMessage(CGUIMessage& message)

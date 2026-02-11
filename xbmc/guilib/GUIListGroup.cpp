@@ -9,8 +9,10 @@
 #include "GUIListGroup.h"
 
 #include "GUIListLabel.h"
+#include "ServiceBroker.h"
 #include "utils/Set.h"
 #include "utils/log.h"
+#include "windowing/WinSystem.h"
 
 namespace
 {

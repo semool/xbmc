@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2005-2018 Team Kodi
+ *  Copyright (C) 2005-2026 Team Kodi
  *  This file is part of Kodi - https://kodi.tv
  *
  *  SPDX-License-Identifier: GPL-2.0-or-later
@@ -11,13 +11,15 @@
 #include "FileItem.h"
 #include "PlayerCoreConfig.h"
 #include "PlayerSelectionRule.h"
+#include "ServiceBroker.h"
 #include "URL.h"
 #include "cores/IPlayerCallback.h"
 #include "cores/VideoPlayer/Interface/InputStreamConstants.h"
 #include "dialogs/GUIDialogContextMenu.h"
-#include "guilib/LocalizeStrings.h"
 #include "music/MusicFileItemClassify.h"
 #include "profiles/ProfileManager.h"
+#include "resources/LocalizeStrings.h"
+#include "resources/ResourcesComponent.h"
 #include "settings/AdvancedSettings.h"
 #include "settings/Settings.h"
 #include "settings/SettingsComponent.h"
@@ -30,6 +32,7 @@
 
 #include <mutex>
 #include <sstream>
+#include <utility>
 
 #define PLAYERCOREFACTORY_XML "playercorefactory.xml"
 
@@ -147,15 +150,16 @@ void CPlayerCoreFactory::GetPlayers(const CFileItem& item, std::vector<std::stri
       (defaultInputstreamPlayerOverride == ForcedPlayer::NONE &&
        (VIDEO::IsVideo(item) || (!MUSIC::IsAudio(item) && !item.IsGame()))))
   {
-    int idx = GetPlayerIndex("videodefaultplayer");
+    const int idx = GetPlayerIndex("videodefaultplayer");
     if (idx > -1)
     {
-      const std::string videoDefault = GetPlayerName(idx);
+      // non-const for move
+      std::string videoDefault = GetPlayerName(idx);
       if (std::ranges::find(players, videoDefault) == players.cend())
       {
-        players.emplace_back(videoDefault);
         CLog::Log(LOGDEBUG, "CPlayerCoreFactory::GetPlayers: adding videodefaultplayer ({})",
                   videoDefault);
+        players.push_back(std::move(videoDefault));
       }
     }
     GetPlayers(players, false, true);  // Video-only players
@@ -167,15 +171,16 @@ void CPlayerCoreFactory::GetPlayers(const CFileItem& item, std::vector<std::stri
   if (defaultInputstreamPlayerOverride == ForcedPlayer::AUDIO_DEFAULT ||
       (defaultInputstreamPlayerOverride == ForcedPlayer::NONE && MUSIC::IsAudio(item)))
   {
-    int idx = GetPlayerIndex("audiodefaultplayer");
+    const int idx = GetPlayerIndex("audiodefaultplayer");
     if (idx > -1)
     {
-      const std::string audioDefault = GetPlayerName(idx);
+      // non-const for move
+      std::string audioDefault = GetPlayerName(idx);
       if (std::ranges::find(players, audioDefault) == players.cend())
       {
-        players.emplace_back(audioDefault);
         CLog::Log(LOGDEBUG, "CPlayerCoreFactory::GetPlayers: adding audiodefaultplayer ({})",
                   audioDefault);
+        players.push_back(std::move(audioDefault));
       }
     }
     GetPlayers(players, true, false); // Audio-only players
@@ -310,7 +315,7 @@ std::string CPlayerCoreFactory::SelectPlayerDialog(const std::vector<std::string
     //Add default player
     std::string strCaption = players[0];
     strCaption += " (";
-    strCaption += g_localizeStrings.Get(13278);
+    strCaption += CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(13278);
     strCaption += ")";
     choices.Add(0, strCaption);
 

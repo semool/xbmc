@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2025 Team Kodi
+ *  Copyright (C) 2025-2026 Team Kodi
  *  This file is part of Kodi - https://kodi.tv
  *
  *  SPDX-License-Identifier: GPL-2.0-or-later
@@ -14,11 +14,13 @@
  *  Examples of external changes: functional changes, bug fixes, constants value changes, ...
  */
 
+#include "ServiceBroker.h"
 #include "URL.h"
 #include "VideoDatabase.h"
 #include "dbwrappers/dataset.h"
 #include "filesystem/MultiPathDirectory.h"
-#include "guilib/LocalizeStrings.h"
+#include "resources/LocalizeStrings.h"
+#include "resources/ResourcesComponent.h"
 #include "utils/StringUtils.h"
 #include "utils/URIUtils.h"
 #include "utils/i18n/TableLanguageCodes.h"
@@ -53,7 +55,7 @@ void InitializeVideoVersionTypeTableV123(CDatabase& db)
   {
     for (int id = VIDEO_VERSION_ID_BEGIN; id <= VIDEO_VERSION_ID_END; ++id)
     {
-      const std::string& type{g_localizeStrings.Get(id)};
+      const std::string& type{CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(id)};
       db.ExecuteQuery(
           db.PrepareSQL("INSERT INTO videoversiontype (id, name, owner) VALUES(%i, '%s', %i)", id,
                         type.c_str(), VideoAssetTypeOwner_SYSTEM));
@@ -135,13 +137,13 @@ void CVideoDatabase::UpdateTables(int iVersion)
     std::vector<CShowItem> shows;
     while (!m_pDS->eof())
     {
-      CShowItem show;
+      CShowItem& show = shows.emplace_back();
       show.id = m_pDS->fv(0).get_asInt();
       show.path = m_pDS->fv(1).get_asInt();
       show.title = m_pDS->fv(2).get_asString();
       show.year = m_pDS->fv(3).get_asString();
       show.ident = m_pDS->fv(4).get_asString();
-      shows.emplace_back(std::move(show));
+
       m_pDS->next();
     }
     m_pDS->close();
@@ -192,11 +194,11 @@ void CVideoDatabase::UpdateTables(int iVersion)
     std::vector<CShowLink> shows;
     while (!m_pDS->eof())
     {
-      CShowLink link;
+      CShowLink& link = shows.emplace_back();
       link.show = m_pDS->fv(0).get_asInt();
       link.pathId = m_pDS->fv(1).get_asInt();
       link.path = m_pDS->fv(2).get_asString();
-      shows.emplace_back(std::move(link));
+
       m_pDS->next();
     }
     m_pDS->close();

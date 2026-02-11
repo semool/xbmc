@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2005-2018 Team Kodi
+ *  Copyright (C) 2005-2026 Team Kodi
  *  This file is part of Kodi - https://kodi.tv
  *
  *  SPDX-License-Identifier: GPL-2.0-or-later
@@ -28,10 +28,13 @@
 #include "utils/SortUtils.h"
 #include "utils/StringUtils.h"
 #include "utils/TimeUtils.h"
-#include "utils/XBMCTinyXML.h"
 #include "utils/log.h"
+#include "windowing/WinSystem.h"
 
+#include <algorithm>
 #include <memory>
+
+#include <tinyxml.h>
 
 using namespace KODI;
 
@@ -40,9 +43,28 @@ using namespace KODI;
 #define SCROLLING_GAP   200U
 #define SCROLLING_THRESHOLD 300U
 
-CGUIBaseContainer::CGUIBaseContainer(int parentID, int controlID, float posX, float posY, float width, float height, ORIENTATION orientation, const CScroller& scroller, int preloadItems)
-    : IGUIContainer(parentID, controlID, posX, posY, width, height)
-    , m_scroller(scroller)
+CGUIBaseContainer::RENDERITEM::RENDERITEM(float newPosX,
+                                          float newPosY,
+                                          std::shared_ptr<CGUIListItem> newItem,
+                                          bool newFocused)
+  : posX(newPosX),
+    posY(newPosY),
+    item(newItem),
+    focused(newFocused)
+{
+}
+
+CGUIBaseContainer::CGUIBaseContainer(int parentID,
+                                     int controlID,
+                                     float posX,
+                                     float posY,
+                                     float width,
+                                     float height,
+                                     ORIENTATION orientation,
+                                     const CScroller& scroller,
+                                     int preloadItems)
+  : IGUIContainer(parentID, controlID, posX, posY, width, height),
+    m_scroller(scroller)
 {
   m_cursor = 0;
   m_offset = 0;
@@ -146,10 +168,8 @@ void CGUIBaseContainer::Process(unsigned int currentTime, CDirtyRegionList &dirt
 
   if (!m_layout || !m_focusedLayout) return;
 
+  // UpdateScrollOffset already marks dirty region when scroller is active
   UpdateScrollOffset(currentTime);
-
-  if (m_scroller.IsScrolling())
-    MarkDirtyRegion();
 
   int offset = (int)floorf(m_scroller.GetValue() / m_layout->Size(m_orientation));
 
@@ -306,9 +326,9 @@ void CGUIBaseContainer::Render()
         else
         {
           if (m_orientation == VERTICAL)
-            renderitems.emplace_back(RENDERITEM{origin.x, pos, item, false});
+            renderitems.emplace_back(origin.x, pos, item, false);
           else
-            renderitems.emplace_back(RENDERITEM{pos, origin.y, item, false});
+            renderitems.emplace_back(pos, origin.y, item, false);
         }
       }
       // increment our position
@@ -319,9 +339,9 @@ void CGUIBaseContainer::Render()
     if (focusedItem)
     {
       if (m_orientation == VERTICAL)
-        renderitems.emplace_back(RENDERITEM{origin.x, focusedPos, focusedItem, true});
+        renderitems.emplace_back(origin.x, focusedPos, focusedItem, true);
       else
-        renderitems.emplace_back(RENDERITEM{focusedPos, origin.y, focusedItem, true});
+        renderitems.emplace_back(focusedPos, origin.y, focusedItem, true);
     }
 
     if (CServiceBroker::GetWinSystem()->GetGfxContext().GetRenderOrder() ==
@@ -630,30 +650,24 @@ void CGUIBaseContainer::OnRight()
 
 void CGUIBaseContainer::OnNextLetter()
 {
-  int offset = CorrectOffset(GetOffset(), GetCursor());
-  for (unsigned int i = 0; i < m_letterOffsets.size(); i++)
-  {
-    if (m_letterOffsets[i].first > offset)
-    {
-      SelectItem(m_letterOffsets[i].first);
-      return;
-    }
-  }
+  const int offset = CorrectOffset(GetOffset(), GetCursor());
+  // Binary search for first letter offset greater than current position
+  auto it =
+      std::ranges::upper_bound(m_letterOffsets, offset, {}, &std::pair<int, std::string>::first);
+  if (it != m_letterOffsets.end())
+    SelectItem(it->first);
 }
 
 void CGUIBaseContainer::OnPrevLetter()
 {
-  int offset = CorrectOffset(GetOffset(), GetCursor());
+  const int offset = CorrectOffset(GetOffset(), GetCursor());
   if (m_letterOffsets.empty())
     return;
-  for (int i = (int)m_letterOffsets.size() - 1; i >= 0; i--)
-  {
-    if (m_letterOffsets[i].first < offset)
-    {
-      SelectItem(m_letterOffsets[i].first);
-      return;
-    }
-  }
+  // Binary search for last letter offset less than current position
+  auto it =
+      std::ranges::lower_bound(m_letterOffsets, offset, {}, &std::pair<int, std::string>::first);
+  if (it != m_letterOffsets.begin())
+    SelectItem((--it)->first);
 }
 
 void CGUIBaseContainer::OnJumpLetter(const std::string& letter, bool skip /*=false*/)
@@ -705,15 +719,17 @@ void CGUIBaseContainer::OnJumpSMS(int letter)
     return;
 
   const std::string letters = letterMap[letter - 2];
-  // find where we currently are
-  int offset = CorrectOffset(GetOffset(), GetCursor());
-  unsigned int currentLetter = 0;
-  while (currentLetter + 1 < m_letterOffsets.size() && m_letterOffsets[currentLetter + 1].first <= offset)
-    currentLetter++;
+  // find where we currently are using binary search
+  const int offset = CorrectOffset(GetOffset(), GetCursor());
+  auto it =
+      std::ranges::upper_bound(m_letterOffsets, offset, {}, &std::pair<int, std::string>::first);
+  // upper_bound gives us the first element > offset, we want the last element <= offset
+  if (it != m_letterOffsets.begin())
+    --it;
 
   // now switch to the next letter
-  std::string current = m_letterOffsets[currentLetter].second;
-  size_t startPos = (letters.find(current) + 1) % letters.size();
+  const std::string current = it->second;
+  const size_t startPos = (letters.find(current) + 1) % letters.size();
   // now jump to letters[startPos], or another one in the same range if possible
   size_t pos = startPos;
   while (true)

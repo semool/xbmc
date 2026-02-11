@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2005-2024 Team Kodi
+ *  Copyright (C) 2005-2026 Team Kodi
  *  This file is part of Kodi - https://kodi.tv
  *
  *  SPDX-License-Identifier: GPL-2.0-or-later
@@ -8,6 +8,7 @@
 
 #include "RenderSystemGLES.h"
 
+#include "ServiceBroker.h"
 #include "URL.h"
 #include "guilib/DirtyRegion.h"
 #include "guilib/GUITextureGLES.h"
@@ -24,6 +25,7 @@
 #include "utils/XTimeUtils.h"
 #include "utils/log.h"
 #include "windowing/GraphicContext.h"
+#include "windowing/WinSystem.h"
 
 #if defined(TARGET_LINUX)
 #include "utils/EGLUtils.h"
@@ -204,10 +206,10 @@ void CRenderSystemGLES::InvalidateColorBuffer()
     return;
 
   // some platforms prefer a clear, instead of rendering over
-  if (!CServiceBroker::GetSettingsComponent()->GetAdvancedSettings()->m_guiGeometryClear)
+  if (GetClearFunction() == ClearFunction::FIXED_FUNCTION)
     ClearBuffers(0);
 
-  if (!CServiceBroker::GetSettingsComponent()->GetAdvancedSettings()->m_guiFrontToBackRendering)
+  if (!GetEnabledFrontToBackRendering())
     return;
 
   glClearDepthf(0);
@@ -229,7 +231,7 @@ bool CRenderSystemGLES::ClearBuffers(KODI::UTILS::COLOR::Color color)
 
   GLbitfield flags = GL_COLOR_BUFFER_BIT;
 
-  if (CServiceBroker::GetSettingsComponent()->GetAdvancedSettings()->m_guiFrontToBackRendering)
+  if (GetEnabledFrontToBackRendering())
   {
     glClearDepthf(0);
     glDepthMask(GL_TRUE);
@@ -419,20 +421,20 @@ void CRenderSystemGLES::ResetScissors()
   SetScissors(CRect(0, 0, (float)m_width, (float)m_height));
 }
 
-void CRenderSystemGLES::SetDepthCulling(DEPTH_CULLING culling)
+void CRenderSystemGLES::SetDepthCulling(DepthCulling culling)
 {
-  if (culling == DEPTH_CULLING_OFF)
+  if (culling == DepthCulling::OFF)
   {
     glDisable(GL_DEPTH_TEST);
     glDepthMask(GL_FALSE);
   }
-  else if (culling == DEPTH_CULLING_BACK_TO_FRONT)
+  else if (culling == DepthCulling::BACK_TO_FRONT)
   {
     glEnable(GL_DEPTH_TEST);
     glDepthMask(GL_FALSE);
     glDepthFunc(GL_GEQUAL);
   }
-  else if (culling == DEPTH_CULLING_FRONT_TO_BACK)
+  else if (culling == DepthCulling::FRONT_TO_BACK)
   {
     glEnable(GL_DEPTH_TEST);
     glDepthMask(GL_TRUE);
@@ -796,7 +798,7 @@ GLint CRenderSystemGLES::GUIShaderGetBrightness()
   return -1;
 }
 
-bool CRenderSystemGLES::SupportsStereo(RENDER_STEREO_MODE mode) const
+bool CRenderSystemGLES::SupportsStereo(RenderStereoMode mode) const
 {
   return CRenderSystemBase::SupportsStereo(mode);
 }

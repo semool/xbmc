@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2005-2018 Team Kodi
+ *  Copyright (C) 2005-2026 Team Kodi
  *  This file is part of Kodi - https://kodi.tv
  *
  *  SPDX-License-Identifier: GPL-2.0-or-later
@@ -19,8 +19,9 @@
 #include "dialogs/GUIDialogYesNo.h"
 #include "guilib/GUIComponent.h"
 #include "guilib/GUIMessage.h"
-#include "guilib/LocalizeStrings.h"
 #include "profiles/ProfileManager.h"
+#include "resources/LocalizeStrings.h"
+#include "resources/ResourcesComponent.h"
 #include "settings/AdvancedSettings.h"
 #include "settings/MediaSettings.h"
 #include "settings/Settings.h"
@@ -36,6 +37,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #define SETTING_AUDIO_VOLUME                   "audio.volume"
@@ -79,21 +81,27 @@ void CGUIDialogAudioSettings::FrameMove()
 std::string CGUIDialogAudioSettings::FormatDelay(float value, float interval)
 {
   if (fabs(value) < 0.5f * interval)
-    return StringUtils::Format(g_localizeStrings.Get(22003), 0.0);
+    return StringUtils::Format(
+        CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(22003), 0.0);
   if (value < 0)
-    return StringUtils::Format(g_localizeStrings.Get(22004), fabs(value));
+    return StringUtils::Format(
+        CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(22004), fabs(value));
 
-  return StringUtils::Format(g_localizeStrings.Get(22005), value);
+  return StringUtils::Format(
+      CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(22005), value);
 }
 
 std::string CGUIDialogAudioSettings::FormatDecibel(float value)
 {
-  return StringUtils::Format(g_localizeStrings.Get(14054), value);
+  return StringUtils::Format(
+      CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(14054), value);
 }
 
 std::string CGUIDialogAudioSettings::FormatPercentAsDecibel(float value)
 {
-  return StringUtils::Format(g_localizeStrings.Get(14054), CAEUtil::PercentToGain(value));
+  return StringUtils::Format(
+      CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(14054),
+      CAEUtil::PercentToGain(value));
 }
 
 void CGUIDialogAudioSettings::OnSettingChanged(const std::shared_ptr<const CSetting>& setting)
@@ -351,11 +359,13 @@ std::string FormatCodec(const AudioStreamInfo& info)
   }
   else
   {
-    codec += StringUtils::Format("{} - {} {}",
-                                 info.codecName.empty() ? g_localizeStrings.Get(13205) // unknown
-                                                        : info.codecName,
-                                 info.channels,
-                                 g_localizeStrings.Get(10127) // channels
+    codec += StringUtils::Format(
+        "{} - {} {}",
+        info.codecName.empty()
+            ? CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(13205) // unknown
+            : info.codecName,
+        info.channels,
+        CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(10127) // channels
     );
   }
   codec += ")";
@@ -375,27 +385,27 @@ void CGUIDialogAudioSettings::AudioStreamsOptionFiller(const SettingConstPtr& se
   // cycle through each audio stream and add it to our list control
   for (int i = 0; i < audioStreamCount; ++i)
   {
-    std::string strLanguage;
+    std::string textInfo;
 
     AudioStreamInfo info;
     appPlayer->GetAudioStreamInfo(i, info);
 
-    if (!g_LangCodeExpander.Lookup(info.language, strLanguage))
-      strLanguage = "[" + g_localizeStrings.Get(13205) + "]"; // Unknown
+    if (!g_LangCodeExpander.Lookup(info.language, textInfo))
+      textInfo = "[" + CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(13205) +
+                 "]"; // Unknown
 
-    std::string textInfo = strLanguage;
     if (!info.name.empty())
       textInfo += " - " + info.name;
 
     textInfo += FormatCodec(info);
     textInfo += FormatFlags(info.flags);
     textInfo += StringUtils::Format(" ({}/{})", i + 1, audioStreamCount);
-    list.emplace_back(textInfo, i);
+    list.emplace_back(std::move(textInfo), i);
   }
 
   if (list.empty())
   {
-    list.emplace_back(g_localizeStrings.Get(231), -1);
+    list.emplace_back(CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(231), -1);
     current = -1;
   }
 }
@@ -414,11 +424,14 @@ std::string CGUIDialogAudioSettings::SettingFormatterDelay(
   float fStep = step.asFloat();
 
   if (fabs(fValue) < 0.5f * fStep)
-    return StringUtils::Format(g_localizeStrings.Get(22003), 0.0);
+    return StringUtils::Format(
+        CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(22003), 0.0);
   if (fValue < 0)
-    return StringUtils::Format(g_localizeStrings.Get(22004), fabs(fValue));
+    return StringUtils::Format(
+        CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(22004), fabs(fValue));
 
-  return StringUtils::Format(g_localizeStrings.Get(22005), fValue);
+  return StringUtils::Format(
+      CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(22005), fValue);
 }
 
 std::string CGUIDialogAudioSettings::SettingFormatterPercentAsDecibel(
@@ -433,7 +446,8 @@ std::string CGUIDialogAudioSettings::SettingFormatterPercentAsDecibel(
 
   std::string formatString = control->GetFormatString();
   if (control->GetFormatLabel() > -1)
-    formatString = g_localizeStrings.Get(control->GetFormatLabel());
+    formatString =
+        CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(control->GetFormatLabel());
 
   return StringUtils::Format(formatString, CAEUtil::PercentToGain(value.asFloat()));
 }
@@ -442,15 +456,20 @@ std::string CGUIDialogAudioSettings::FormatFlags(StreamFlags flags)
 {
   std::vector<std::string> localizedFlags;
   if (flags & StreamFlags::FLAG_DEFAULT)
-    localizedFlags.emplace_back(g_localizeStrings.Get(39105));
+    localizedFlags.emplace_back(
+        CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(39105));
   if (flags & StreamFlags::FLAG_FORCED)
-    localizedFlags.emplace_back(g_localizeStrings.Get(39106));
+    localizedFlags.emplace_back(
+        CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(39106));
   if (flags & StreamFlags::FLAG_HEARING_IMPAIRED)
-    localizedFlags.emplace_back(g_localizeStrings.Get(39107));
+    localizedFlags.emplace_back(
+        CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(39107));
   if (flags &  StreamFlags::FLAG_VISUAL_IMPAIRED)
-    localizedFlags.emplace_back(g_localizeStrings.Get(39108));
+    localizedFlags.emplace_back(
+        CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(39108));
   if (flags & StreamFlags::FLAG_ORIGINAL)
-    localizedFlags.emplace_back(g_localizeStrings.Get(39111));
+    localizedFlags.emplace_back(
+        CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(39111));
 
   std::string formated = StringUtils::Join(localizedFlags, ", ");
 

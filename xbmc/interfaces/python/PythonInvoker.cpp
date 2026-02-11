@@ -22,11 +22,12 @@
 #include "filesystem/SpecialProtocol.h"
 #include "guilib/GUIComponent.h"
 #include "guilib/GUIWindowManager.h"
-#include "guilib/LocalizeStrings.h"
 #include "interfaces/python/PyContext.h"
 #include "interfaces/python/pythreadstate.h"
 #include "interfaces/python/swig.h"
 #include "messaging/ApplicationMessenger.h"
+#include "resources/LocalizeStrings.h"
+#include "resources/ResourcesComponent.h"
 #include "threads/SingleLock.h"
 #include "threads/SystemClock.h"
 #include "utils/CharsetConverter.h"
@@ -36,6 +37,7 @@
 #include "utils/XTimeUtils.h"
 #include "utils/log.h"
 #include "windowing/GraphicContext.h"
+#include "windowing/WinSystem.h"
 
 // clang-format off
 // This breaks fmt because of SEP define, don't include
@@ -697,10 +699,13 @@ void CPythonInvoker::onError(const std::string& exceptionType /* = "" */,
   {
     std::string message;
     if (m_addon && !m_addon->Name().empty())
-      message = StringUtils::Format(g_localizeStrings.Get(2102), m_addon->Name());
+      message = StringUtils::Format(
+          CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(2102), m_addon->Name());
     else
-      message = g_localizeStrings.Get(2103);
-    pDlgToast->QueueNotification(CGUIDialogKaiToast::Error, message, g_localizeStrings.Get(2104));
+      message = CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(2103);
+    pDlgToast->QueueNotification(
+        CGUIDialogKaiToast::Error, message,
+        CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(2104));
   }
 }
 
