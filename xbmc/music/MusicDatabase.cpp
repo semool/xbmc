@@ -148,8 +148,8 @@ void CMusicDatabase::CreateTables()
   std::string strSQL =
       PrepareSQL("INSERT INTO artist (idArtist, strArtist, strSortName, strMusicBrainzArtistID) "
                  "VALUES( %i, '%s', '%s', '%s' )",
-                 BLANKARTIST_ID, BLANKARTIST_NAME.c_str(), BLANKARTIST_NAME.c_str(),
-                 BLANKARTIST_FAKEMUSICBRAINZID.c_str());
+                 BLANKARTIST_ID, BLANKARTIST_NAME.data(), BLANKARTIST_NAME.data(),
+                 BLANKARTIST_FAKEMUSICBRAINZID.data());
   m_pDS->exec(strSQL);
 
   CLog::Log(LOGINFO, "create album table");
@@ -1425,7 +1425,7 @@ int CMusicDatabase::AddAlbum(const std::string& strAlbum,
                              const std::string& strType,
                              const std::string& strReleaseStatus,
                              bool bCompilation,
-                             CAlbum::ReleaseType releaseType)
+                             ReleaseType releaseType)
 {
   std::string strSQL;
   try
@@ -1554,7 +1554,7 @@ int CMusicDatabase::UpdateAlbum(int idAlbum,
                                 const std::string& strOrigReleaseDate,
                                 bool bBoxedSet,
                                 bool bCompilation,
-                                CAlbum::ReleaseType releaseType,
+                                ReleaseType releaseType,
                                 bool bScrapedMBID)
 {
   if (idAlbum < 0)
@@ -2482,7 +2482,7 @@ bool CMusicDatabase::GetArtistDiscography(int idArtist, CFileItemList& items)
   return false;
 }
 
-int CMusicDatabase::AddRole(const std::string& strRole)
+int CMusicDatabase::AddRole(std::string_view strRole)
 {
   int idRole = -1;
   std::string strSQL;
@@ -2493,7 +2493,7 @@ int CMusicDatabase::AddRole(const std::string& strRole)
       return -1;
     if (nullptr == m_pDS)
       return -1;
-    strSQL = PrepareSQL("SELECT idRole FROM role WHERE strRole LIKE '%s'", strRole.c_str());
+    strSQL = PrepareSQL("SELECT idRole FROM role WHERE strRole LIKE '%s'", strRole.data());
     m_pDS->query(strSQL);
     if (m_pDS->num_rows() > 0)
       idRole = m_pDS->fv("idRole").get_asInt();
@@ -2501,7 +2501,7 @@ int CMusicDatabase::AddRole(const std::string& strRole)
 
     if (idRole < 0)
     {
-      strSQL = PrepareSQL("INSERT INTO role (strRole) VALUES ('%s')", strRole.c_str());
+      strSQL = PrepareSQL("INSERT INTO role (strRole) VALUES ('%s')", strRole.data());
       m_pDS->exec(strSQL);
       idRole = static_cast<int>(m_pDS->lastinsertid());
       m_pDS->close();
@@ -2515,19 +2515,19 @@ int CMusicDatabase::AddRole(const std::string& strRole)
 }
 
 bool CMusicDatabase::AddSongArtist(
-    int idArtist, int idSong, const std::string& strRole, const std::string& strArtist, int iOrder)
+    int idArtist, int idSong, std::string_view strRole, std::string_view strArtist, int iOrder)
 {
   int idRole = AddRole(strRole);
   return AddSongArtist(idArtist, idSong, idRole, strArtist, iOrder);
 }
 
 bool CMusicDatabase::AddSongArtist(
-    int idArtist, int idSong, int idRole, const std::string& strArtist, int iOrder)
+    int idArtist, int idSong, int idRole, std::string_view strArtist, int iOrder)
 {
   std::string strSQL;
   strSQL = PrepareSQL("REPLACE INTO song_artist (idArtist, idSong, idRole, strArtist, iOrder) "
                       "VALUES(%i, %i, %i,'%s', %i)",
-                      idArtist, idSong, idRole, strArtist.c_str(), iOrder);
+                      idArtist, idSong, idRole, strArtist.data(), iOrder);
   return ExecuteQuery(strSQL);
 }
 
@@ -2575,7 +2575,7 @@ int CMusicDatabase::AddSongContributor(int idSong,
 }
 
 void CMusicDatabase::AddSongContributors(int idSong,
-                                         const VECMUSICROLES& contributors,
+                                         const std::vector<CMusicRole>& contributors,
                                          const std::string& strSort)
 {
   std::vector<std::string> composerSort;
@@ -2675,13 +2675,13 @@ bool CMusicDatabase::DeleteSongArtistsBySong(int idSong)
 
 bool CMusicDatabase::AddAlbumArtist(int idArtist,
                                     int idAlbum,
-                                    const std::string& strArtist,
+                                    std::string_view strArtist,
                                     int iOrder)
 {
   std::string strSQL;
   strSQL = PrepareSQL("REPLACE INTO album_artist (idArtist, idAlbum, strArtist, iOrder) "
                       "VALUES(%i,%i,'%s',%i)",
-                      idArtist, idAlbum, strArtist.c_str(), iOrder);
+                      idArtist, idAlbum, strArtist.data(), iOrder);
   return ExecuteQuery(strSQL);
 }
 
@@ -2776,7 +2776,7 @@ bool CMusicDatabase::GetArtistsByAlbum(int idAlbum, CFileItem* item)
     }
 
     // Get album artist credits
-    VECARTISTCREDITS artistCredits;
+    std::vector<CArtistCredit> artistCredits;
     while (!m_pDS->eof())
     {
       artistCredits.emplace_back(GetArtistCreditFromDataset(m_pDS->get_sql_record(), 0));
@@ -3240,7 +3240,7 @@ void CMusicDatabase::GetFileItemFromDataset(const dbiplus::sql_record* const rec
   }
 }
 
-void CMusicDatabase::GetFileItemFromArtistCredits(VECARTISTCREDITS& artistCredits,
+void CMusicDatabase::GetFileItemFromArtistCredits(std::vector<CArtistCredit>& artistCredits,
                                                   CFileItem* item) const
 {
   // Populate fileitem with artists from vector of artist credits
@@ -3615,7 +3615,7 @@ bool CMusicDatabase::GetTop100(const std::string& strBaseDir, CFileItemList& ite
   return false;
 }
 
-bool CMusicDatabase::GetTop100Albums(VECALBUMS& albums)
+bool CMusicDatabase::GetTop100Albums(std::vector<CAlbum>& albums)
 {
   try
   {
@@ -3726,7 +3726,7 @@ bool CMusicDatabase::GetTop100AlbumSongs(const std::string& strBaseDir, CFileIte
   return false;
 }
 
-bool CMusicDatabase::GetRecentlyPlayedAlbums(VECALBUMS& albums)
+bool CMusicDatabase::GetRecentlyPlayedAlbums(std::vector<CAlbum>& albums)
 {
   try
   {
@@ -3747,7 +3747,7 @@ bool CMusicDatabase::GetRecentlyPlayedAlbums(VECALBUMS& albums)
                    "JOIN albumview ON albumview.idAlbum = playedalbums.idAlbum "
                    "JOIN albumartistview ON albumview.idAlbum = albumartistview.idAlbum "
                    "ORDER BY albumview.lastplayed DESC, albumartistview.iorder ",
-                   CAlbum::ReleaseTypeToString(CAlbum::Album).c_str(), RECENTLY_PLAYED_LIMIT);
+                   CAlbum::ReleaseTypeToString(ReleaseType::Album).c_str(), RECENTLY_PLAYED_LIMIT);
 
     auto queryStart = std::chrono::steady_clock::now();
     CLog::LogF(LOGDEBUG, "query: {}", strSQL);
@@ -3841,7 +3841,7 @@ bool CMusicDatabase::GetRecentlyPlayedAlbumSongs(const std::string& strBaseDir,
     // Gather artist credits, rather than append to item as go along, so can return array of artistIDs too
     int songArtistOffset = song_enumCount;
     int songId = -1;
-    VECARTISTCREDITS artistCredits;
+    std::vector<CArtistCredit> artistCredits;
     while (!m_pDS->eof())
     {
       const dbiplus::sql_record* const record = m_pDS->get_sql_record();
@@ -3887,7 +3887,7 @@ bool CMusicDatabase::GetRecentlyPlayedAlbumSongs(const std::string& strBaseDir,
   return false;
 }
 
-bool CMusicDatabase::GetRecentlyAddedAlbums(VECALBUMS& albums, unsigned int limit)
+bool CMusicDatabase::GetRecentlyAddedAlbums(std::vector<CAlbum>& albums, unsigned int limit)
 {
   try
   {
@@ -3994,7 +3994,7 @@ bool CMusicDatabase::GetRecentlyAddedAlbumSongs(const std::string& strBaseDir,
     // Get songs from returned rows. Join means there is a row for every song artist
     int songArtistOffset = song_enumCount;
     int songId = -1;
-    VECARTISTCREDITS artistCredits;
+    std::vector<CArtistCredit> artistCredits;
     while (!m_pDS->eof())
     {
       const dbiplus::sql_record* const record = m_pDS->get_sql_record();
@@ -4063,7 +4063,7 @@ void CMusicDatabase::IncrementPlayCount(const CFileItem& item)
 }
 
 bool CMusicDatabase::GetSongsByPath(const std::string& strPath1,
-                                    MAPSONGS& songmap,
+                                    std::map<std::string, std::vector<CSong>>& songmap,
                                     bool bAppendToMap)
 {
   std::string strPath(strPath1);
@@ -4098,7 +4098,7 @@ bool CMusicDatabase::GetSongsByPath(const std::string& strPath1,
     }
 
     // Each file is potentially mapped to a list of songs, gather these and save as list
-    VECSONGS songs;
+    std::vector<CSong> songs;
     std::string filename;
     while (!m_pDS->eof())
     {
@@ -6358,7 +6358,7 @@ bool CMusicDatabase::GetSongsFullByWhere(
     items.Reserve(total);
     int songArtistOffset = song_enumCount;
     int songId = -1;
-    VECARTISTCREDITS artistCredits;
+    std::vector<CArtistCredit> artistCredits;
     const dbiplus::query_data& data = m_pDS->get_result_set().records;
     int count = 0;
     for (const auto& i : results)
@@ -8669,10 +8669,10 @@ void CMusicDatabase::UpdateTables(int version)
     // set strReleaseType based on album name
     m_pDS->exec(PrepareSQL(
         "UPDATE album SET strReleaseType = '%s' WHERE strAlbum IS NOT NULL AND strAlbum <> ''",
-        CAlbum::ReleaseTypeToString(CAlbum::Album).c_str()));
+        CAlbum::ReleaseTypeToString(ReleaseType::Album).c_str()));
     m_pDS->exec(
         PrepareSQL("UPDATE album SET strReleaseType = '%s' WHERE strAlbum IS NULL OR strAlbum = ''",
-                   CAlbum::ReleaseTypeToString(CAlbum::Single).c_str()));
+                   CAlbum::ReleaseTypeToString(ReleaseType::Single).c_str()));
   }
   if (version < 51)
   {
@@ -8927,7 +8927,7 @@ void CMusicDatabase::UpdateTables(int version)
     // Fake MusicbrainzId assures uniqueness and avoids updates from scanned songs
     strSQL = PrepareSQL(
         "INSERT INTO artist (idArtist, strArtist, strMusicBrainzArtistID) VALUES( %i, '%s', '%s' )",
-        BLANKARTIST_ID, BLANKARTIST_NAME.c_str(), BLANKARTIST_FAKEMUSICBRAINZID.c_str());
+        BLANKARTIST_ID, BLANKARTIST_NAME.data(), BLANKARTIST_FAKEMUSICBRAINZID.data());
     m_pDS->exec(strSQL);
 
     // Indices have been dropped making transactions very slow, so create temp index
@@ -8949,7 +8949,7 @@ void CMusicDatabase::UpdateTables(int version)
                             "SELECT %i, idSong, %i, '%s', 0 FROM song "
                             "WHERE NOT EXISTS(SELECT idSong FROM song_artist "
                             "WHERE song_artist.idsong = song.idsong AND song_artist.idRole = %i)",
-                            BLANKARTIST_ID, ROLE_ARTIST, BLANKARTIST_NAME.c_str(), ROLE_ARTIST);
+                            BLANKARTIST_ID, ROLE_ARTIST, BLANKARTIST_NAME.data(), ROLE_ARTIST);
         ExecuteQuery(strSQL);
       }
       catch (...)
@@ -8973,7 +8973,7 @@ void CMusicDatabase::UpdateTables(int version)
                             "SELECT %i, idAlbum, '%s', 0 FROM album "
                             "WHERE NOT EXISTS(SELECT idAlbum FROM album_artist "
                             "WHERE album_artist.idAlbum = album.idAlbum)",
-                            BLANKARTIST_ID, BLANKARTIST_NAME.c_str());
+                            BLANKARTIST_ID, BLANKARTIST_NAME.data());
         ExecuteQuery(strSQL);
       }
       catch (...)
@@ -11246,7 +11246,7 @@ int CMusicDatabase::GetSinglesCount()
 {
   CDatabase::Filter filter(
       PrepareSQL("songview.idAlbum IN (SELECT idAlbum FROM album WHERE strReleaseType = '%s')",
-                 CAlbum::ReleaseTypeToString(CAlbum::Single).c_str()));
+                 CAlbum::ReleaseTypeToString(ReleaseType::Single).c_str()));
   return GetSongsCount(filter);
 }
 
@@ -11323,7 +11323,9 @@ bool CMusicDatabase::GetPathHash(const std::string& path, std::string& hash)
   return false;
 }
 
-bool CMusicDatabase::RemoveSongsFromPath(const std::string& path1, MAPSONGS& songmap, bool exact)
+bool CMusicDatabase::RemoveSongsFromPath(const std::string& path1,
+                                         std::map<std::string, std::vector<CSong>>& songmap,
+                                         bool exact)
 {
   // We need to remove all songs from this path, as their tags are going
   // to be re-read.  We need to remove all songs from the song table + all links to them
@@ -11380,7 +11382,7 @@ bool CMusicDatabase::RemoveSongsFromPath(const std::string& path1, MAPSONGS& son
     if (iRowsFound > 0)
     {
       // Each file is potentially mapped to a list of songs, gather these and save as list
-      VECSONGS songs;
+      std::vector<CSong> songs;
       std::string filename;
       std::vector<std::string> songIds;
       while (!m_pDS->eof())
@@ -11984,7 +11986,7 @@ void CMusicDatabase::ExportToXML(const CLibExportSettings& settings,
       // Find albums to export
       std::vector<int> albumIds;
       std::string strSQL = PrepareSQL("SELECT idAlbum FROM album WHERE strReleaseType = '%s' ",
-                                      CAlbum::ReleaseTypeToString(CAlbum::Album).c_str());
+                                      CAlbum::ReleaseTypeToString(ReleaseType::Album).c_str());
       if (!settings.IsUnscraped())
         strSQL += "AND lastScraped IS NOT NULL";
       CLog::LogF(LOGDEBUG, "{}", strSQL);
@@ -13732,7 +13734,7 @@ bool CMusicDatabase::GetFilter(CDbUrl& musicUrl, Filter& filter, SortDescription
       option = options.find("show_singles");
       if (option == options.end() || !option->second.asBoolean())
         filter.AppendWhere(PrepareSQL("albumview.strReleaseType = '%s'",
-                                      CAlbum::ReleaseTypeToString(CAlbum::Album).c_str()));
+                                      CAlbum::ReleaseTypeToString(ReleaseType::Album).c_str()));
     }
   }
   else if (type == "discs")
@@ -13835,7 +13837,7 @@ bool CMusicDatabase::GetFilter(CDbUrl& musicUrl, Filter& filter, SortDescription
       filter.AppendWhere(PrepareSQL(
           "songview.idAlbum %sIN (SELECT idAlbum FROM album WHERE strReleaseType = '%s')",
           option->second.asBoolean() ? "" : "NOT ",
-          CAlbum::ReleaseTypeToString(CAlbum::Single).c_str()));
+          CAlbum::ReleaseTypeToString(ReleaseType::Single).c_str()));
 
     // When have idAlbum skip year, compilation, boxset criteria as already applied via album
     if (idAlbum < 0)

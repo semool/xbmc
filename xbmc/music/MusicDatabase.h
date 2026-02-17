@@ -13,7 +13,6 @@
 \brief
 */
 
-#include "Album.h"
 #include "MediaSource.h"
 #include "addons/Scraper.h"
 #include "dbwrappers/Database.h"
@@ -25,12 +24,20 @@
 #include <map>
 #include <set>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
+class CAlbum;
 class CArtist;
+class CArtistCredit;
+class CDiscoAlbum;
 class CFileItem;
 class CMusicDbUrl;
+class CMusicRole;
+class CSong;
+enum class ReleaseType;
+class ReplayGain;
 class TiXmlNode;
 
 namespace dbiplus
@@ -80,7 +87,7 @@ class CFileItemList;
  Here is the database layout:
   \image html musicdatabase.png
 
- \sa CAlbum, CSong, VECSONGS, CMapSong, VECARTISTS, VECALBUMS, VECGENRES
+ \sa CAlbum, CSong, CMapSong
  */
 class CMusicDatabase : public CDatabase
 {
@@ -233,9 +240,13 @@ public:
 
   //// Misc Song
   bool GetSongByFileName(const std::string& strFileName, CSong& song, int64_t startOffset = 0);
-  bool GetSongsByPath(const std::string& strPath, MAPSONGS& songmap, bool bAppendToMap = false);
+  bool GetSongsByPath(const std::string& strPath,
+                      std::map<std::string, std::vector<CSong>>& songmap,
+                      bool bAppendToMap = false);
   bool Search(const std::string& search, CFileItemList& items);
-  bool RemoveSongsFromPath(const std::string& path, MAPSONGS& songmap, bool exact = true);
+  bool RemoveSongsFromPath(const std::string& path,
+                           std::map<std::string, std::vector<CSong>>& songmap,
+                           bool exact = true);
   void CheckArtistLinksChanged();
   bool SetSongUserrating(const std::string& filePath, int userrating);
   bool SetSongUserrating(int idSong, int userrating);
@@ -289,7 +300,7 @@ public:
                const std::string& strType,
                const std::string& strReleaseStatus,
                bool bCompilation,
-               CAlbum::ReleaseType releaseType);
+               ReleaseType releaseType);
 
   /*! \brief retrieve an album, optionally with all songs.
    \param idAlbum the database id of the album.
@@ -320,7 +331,7 @@ public:
                   const std::string& strOrigReleaseDate,
                   bool bBoxedSet,
                   bool bCompilation,
-                  CAlbum::ReleaseType releaseType,
+                  ReleaseType releaseType,
                   bool bScrapedMBID);
   bool ClearAlbumLastScrapedTime(int idAlbum);
   bool HasAlbumBeenScraped(int idAlbum) const;
@@ -467,26 +478,22 @@ public:
   /////////////////////////////////////////////////
   // Link tables
   /////////////////////////////////////////////////
-  bool AddAlbumArtist(int idArtist, int idAlbum, const std::string& strArtist, int iOrder);
+  bool AddAlbumArtist(int idArtist, int idAlbum, std::string_view strArtist, int iOrder);
   bool GetAlbumsByArtist(int idArtist, std::vector<int>& albums);
   bool GetArtistsByAlbum(int idAlbum, CFileItem* item);
   bool GetArtistsByAlbum(int idAlbum, std::vector<std::string>& artistIDs);
   bool DeleteAlbumArtistsByAlbum(int idAlbum);
 
-  int AddRole(const std::string& strRole);
-  bool AddSongArtist(int idArtist,
-                     int idSong,
-                     const std::string& strRole,
-                     const std::string& strArtist,
-                     int iOrder);
+  int AddRole(std::string_view strRole);
   bool AddSongArtist(
-      int idArtist, int idSong, int idRole, const std::string& strArtist, int iOrder);
+      int idArtist, int idSong, std::string_view strRole, std::string_view strArtist, int iOrder);
+  bool AddSongArtist(int idArtist, int idSong, int idRole, std::string_view strArtist, int iOrder);
   int AddSongContributor(int idSong,
                          const std::string& strRole,
                          const std::string& strArtist,
                          const std::string& strSort);
   void AddSongContributors(int idSong,
-                           const VECMUSICROLES& contributors,
+                           const std::vector<CMusicRole>& contributors,
                            const std::string& strSort);
   int GetRoleByName(const std::string& strRole);
   bool GetRolesByArtist(int idArtist, CFileItem* item);
@@ -506,17 +513,17 @@ public:
   // Top 100
   /////////////////////////////////////////////////
   bool GetTop100(const std::string& strBaseDir, CFileItemList& items);
-  bool GetTop100Albums(VECALBUMS& albums);
+  bool GetTop100Albums(std::vector<CAlbum>& albums);
   bool GetTop100AlbumSongs(const std::string& strBaseDir, CFileItemList& item);
 
   /////////////////////////////////////////////////
   // Recently added
   /////////////////////////////////////////////////
-  bool GetRecentlyAddedAlbums(VECALBUMS& albums, unsigned int limit = 0);
+  bool GetRecentlyAddedAlbums(std::vector<CAlbum>& albums, unsigned int limit = 0);
   bool GetRecentlyAddedAlbumSongs(const std::string& strBaseDir,
                                   CFileItemList& item,
                                   unsigned int limit = 0);
-  bool GetRecentlyPlayedAlbums(VECALBUMS& albums);
+  bool GetRecentlyPlayedAlbums(std::vector<CAlbum>& albums);
   bool GetRecentlyPlayedAlbumSongs(const std::string& strBaseDir, CFileItemList& item);
 
   /////////////////////////////////////////////////
@@ -908,7 +915,8 @@ private:
   void GetFileItemFromDataset(const dbiplus::sql_record* const record,
                               CFileItem* item,
                               const CMusicDbUrl& baseUrl) const;
-  void GetFileItemFromArtistCredits(VECARTISTCREDITS& artistCredits, CFileItem* item) const;
+  void GetFileItemFromArtistCredits(std::vector<CArtistCredit>& artistCredits,
+                                    CFileItem* item) const;
 
   bool DeleteRemovedLinks();
 

@@ -19,12 +19,18 @@
 #include "utils/Artwork.h"
 #include "utils/ScraperUrl.h"
 
-#include <map>
 #include <vector>
 
 class TiXmlElement;
 class TiXmlNode;
 class CFileItem;
+
+enum class ReleaseType
+{
+  Album = 0,
+  Single
+};
+
 class CAlbum
 {
 public:
@@ -67,7 +73,7 @@ public:
     lastPlayed.Reset();
     iTotalDiscs = -1;
     songs.clear();
-    releaseType = Album;
+    releaseType = ReleaseType::Album;
     strLastScraped.clear();
     bScrapedMBID = false;
     bArtistSongMerge = false;
@@ -101,11 +107,6 @@ public:
   \return album artist IDs as a vector of integers
   */
   std::vector<int> GetArtistIDArray() const;
-
-  typedef enum ReleaseType {
-    Album = 0,
-    Single
-  } ReleaseType;
 
   std::string GetReleaseType() const;
   void SetReleaseType(const std::string& strReleaseType);
@@ -149,7 +150,7 @@ public:
   std::string strReleaseGroupMBID;
   std::string strArtistDesc;
   std::string strArtistSort;
-  VECARTISTCREDITS artistCredits;
+  std::vector<CArtistCredit> artistCredits;
   std::vector<std::string> genre;
   CScraperUrl thumbURL;
   std::vector<std::string> moods;
@@ -174,12 +175,10 @@ public:
   CDateTime dateNew;  // Time db record created
   CDateTime lastPlayed;
   int iTotalDiscs = -1;
-  VECSONGS songs;     ///< Local songs
-  ReleaseType releaseType = Album;
+  std::vector<CSong> songs; ///< Local songs
+  ReleaseType releaseType = ReleaseType::Album;
   std::string strLastScraped;
   bool bScrapedMBID = false;
   bool bArtistSongMerge = false;
   int iAlbumDuration = 0;
 };
-
-typedef std::vector<CAlbum> VECALBUMS;

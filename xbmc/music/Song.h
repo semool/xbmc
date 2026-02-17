@@ -20,7 +20,6 @@
 #include "utils/ISerializable.h"
 
 #include <chrono>
-#include <map>
 #include <string>
 #include <vector>
 
@@ -48,8 +47,6 @@ struct ChapterDetails
   std::chrono::milliseconds startTimeMs{0}; // All chapter timings are in milliseconds
   std::chrono::milliseconds endTimeMs{0};
 };
-
-using ChapterMarks = std::vector<ChapterDetails>;
 
 /*!
  \ingroup music
@@ -126,7 +123,7 @@ public:
     or ALBUMARTIST, e.g. COMPOSER or CONDUCTOR etc.
   \return a vector of all contributing artist names and their roles
   */
-  const VECMUSICROLES& GetContributors() const { return m_musicRoles; }
+  const std::vector<CMusicRole>& GetContributors() const { return m_musicRoles; }
   //void AddArtistRole(const int &role, const std::string &artist);
   void AppendArtistRole(const CMusicRole& musicRole);
 
@@ -174,7 +171,7 @@ public:
   std::string strTitle;
   std::string strArtistSort;
   std::string strArtistDesc;
-  VECARTISTCREDITS artistCredits;
+  std::vector<CArtistCredit> artistCredits;
   std::string strAlbum;
   std::vector<std::string> genre;
   std::string strThumb;
@@ -206,32 +203,13 @@ public:
   std::string strRecordLabel; // Record label from tag for album processing by CMusicInfoScanner::FileItemsToAlbums
   std::string strAlbumType; // (Musicbrainz release type) album type from tag for album processing by CMusicInfoScanner::FileItemsToAlbums
   std::string songVideoURL; // url to song video
-  ChapterMarks m_chapters; // map of chapter names and start and end times
+  std::vector<ChapterDetails> m_chapters; // map of chapter names and start and end times
 
   ReplayGain replayGain;
+
 private:
   std::vector<std::string> m_albumArtist; // Album artist from tag for album processing, no desc or MBID
   std::string m_strAlbumArtistSort; // Albumartist sort string from tag for album processing by CMusicInfoScanner::FileItemsToAlbums
   std::string m_strComposerSort;
-  VECMUSICROLES m_musicRoles;
+  std::vector<CMusicRole> m_musicRoles;
 };
-
-/*!
- \ingroup music
- \brief A vector of CSong objects, used for CMusicDatabase
- \sa CMusicDatabase
- */
-typedef std::vector<CSong> VECSONGS;
-
-/*!
- \ingroup music
- \brief A map of a vector of CSong objects key by filename, used for CMusicDatabase
- */
-typedef std::map<std::string, VECSONGS> MAPSONGS;
-
-/*!
- \ingroup music
- \brief A vector of std::string objects, used for CMusicDatabase
- \sa CMusicDatabase
- */
-typedef std::vector<CGenre> VECGENRES;
