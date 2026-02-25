@@ -29,7 +29,6 @@
 #include "utils/XMLUtils.h"
 #include "utils/log.h"
 
-#include <charconv>
 #include <cstdlib>
 #include <memory>
 #include <optional>
@@ -299,23 +298,6 @@ bool CSmartPlaylistRule::ValidateMyRating(const std::string &input, void *data)
   return StringValidation::IsPositiveInteger(input, data) && rating <= 10;
 }
 
-namespace
-{
-template<typename T>
-std::optional<T> ToNumeric(std::string_view str)
-{
-  const char* end{str.data() + str.size()};
-  T result{};
-
-  auto [ptr, ec] = std::from_chars(str.data(), end, result);
-
-  if (ec != std::errc{} || ptr != end || result < 0)
-    return std::nullopt;
-
-  return result;
-}
-} // namespace
-
 bool CSmartPlaylistRule::ValidateDate(const std::string& input, void* data)
 {
   if (!data)
@@ -328,28 +310,8 @@ bool CSmartPlaylistRule::ValidateDate(const std::string& input, void* data)
     return true;
 
   // The date format must be YYYY-MM-DD
-  if (input.size() != 10)
-    return false;
-
-  const std::string_view sv{input};
-
-  if (sv[4] != '-' || sv[7] != '-')
-    return false;
-
-  const auto year{ToNumeric<int>(sv.substr(0, 4))};
-  if (!year.has_value())
-    return false;
-
-  const auto month{ToNumeric<int>(sv.substr(5, 2))};
-  if (!month.has_value())
-    return false;
-
-  const auto day{ToNumeric<int>(sv.substr(8, 2))};
-  if (!day.has_value())
-    return false;
-
   CDateTime dt;
-  return dt.SetDate(year.value(), month.value(), day.value());
+  return dt.SetFromRFC3339FullDate(input);
 }
 
 std::vector<Field> CSmartPlaylistRule::GetFields(const std::string &type)
@@ -1423,7 +1385,9 @@ bool CSmartPlaylist::Load(const CVariant &obj)
   {
     const CVariant &order = obj["order"];
     if (order.isMember("direction") && order["direction"].isString())
-      m_orderDirection = StringUtils::EqualsNoCase(order["direction"].asString(), "ascending") ? SortOrderAscending : SortOrderDescending;
+      m_orderDirection = StringUtils::EqualsNoCase(order["direction"].asString(), "ascending")
+                             ? SortOrder::ASCENDING
+                             : SortOrder::DESCENDING;
 
     if (order.isMember("ignorefolders") && obj["ignorefolders"].isBoolean())
       m_orderAttributes = obj["ignorefolders"].asBoolean() ? SortAttributeIgnoreFolders : SortAttributeNone;
@@ -1480,7 +1444,8 @@ bool CSmartPlaylist::LoadFromXML(const TiXmlNode *root, const std::string &encod
   {
     const char *direction = order->Attribute("direction");
     if (direction)
-      m_orderDirection = StringUtils::EqualsNoCase(direction, "ascending") ? SortOrderAscending : SortOrderDescending;
+      m_orderDirection = StringUtils::EqualsNoCase(direction, "ascending") ? SortOrder::ASCENDING
+                                                                           : SortOrder::DESCENDING;
 
     const char *ignorefolders = order->Attribute("ignorefolders");
     if (ignorefolders != NULL)
@@ -1547,7 +1512,8 @@ bool CSmartPlaylist::Save(const std::string &path) const
   {
     TiXmlText order(CSmartPlaylistRule::TranslateOrder(m_orderField).c_str());
     TiXmlElement nodeOrder("order");
-    nodeOrder.SetAttribute("direction", m_orderDirection == SortOrderDescending ? "descending" : "ascending");
+    nodeOrder.SetAttribute("direction",
+                           m_orderDirection == SortOrder::DESCENDING ? "descending" : "ascending");
     if (m_orderAttributes & SortAttributeIgnoreFolders)
       nodeOrder.SetAttribute("ignorefolders", "true");
     nodeOrder.InsertEndChild(order);
@@ -1586,7 +1552,8 @@ bool CSmartPlaylist::Save(CVariant &obj, bool full /* = true */) const
   {
     obj["order"] = CVariant(CVariant::VariantTypeObject);
     obj["order"]["method"] = CSmartPlaylistRule::TranslateOrder(m_orderField);
-    obj["order"]["direction"] = m_orderDirection == SortOrderDescending ? "descending" : "ascending";
+    obj["order"]["direction"] =
+        m_orderDirection == SortOrder::DESCENDING ? "descending" : "ascending";
     obj["order"]["ignorefolders"] = (m_orderAttributes & SortAttributeIgnoreFolders);
   }
 
@@ -1607,7 +1574,7 @@ void CSmartPlaylist::Reset()
   m_ruleCombination.clear();
   m_limit = 0;
   m_orderField = SortByNone;
-  m_orderDirection = SortOrderNone;
+  m_orderDirection = SortOrder::NONE;
   m_orderAttributes = SortAttributeNone;
   m_playlistType = "songs"; // sane default
   m_group.clear();
@@ -1684,7 +1651,7 @@ bool CSmartPlaylist::IsEmpty(bool ignoreSortAndLimit /* = true */) const
 {
   bool empty = m_ruleCombination.empty();
   if (empty && !ignoreSortAndLimit)
-    empty = m_limit <= 0 && m_orderField == SortByNone && m_orderDirection == SortOrderNone;
+    empty = m_limit == 0 && m_orderField == SortByNone && m_orderDirection == SortOrder::NONE;
 
   return empty;
 }

@@ -5398,7 +5398,7 @@ bool CMusicDatabase::GetAlbumsByYear(const std::string& strBaseDir, CFileItemLis
   musicUrl.AddOption("show_singles", true); // allow singles to be listed
 
   Filter filter;
-  return GetAlbumsByWhere(musicUrl.ToString(), filter, items);
+  return GetAlbumsByWhere(musicUrl.ToString(), items, SortDescription(), filter);
 }
 
 bool CMusicDatabase::GetCommonNav(const std::string& strBaseDir,
@@ -5510,12 +5510,12 @@ bool CMusicDatabase::GetMusicLabelsNav(const std::string& strBaseDir,
 
 bool CMusicDatabase::GetArtistsNav(const std::string& strBaseDir,
                                    CFileItemList& items,
+                                   const SortDescription& sortDescription,
                                    bool albumArtistsOnly /* = false */,
                                    int idGenre /* = -1 */,
                                    int idAlbum /* = -1 */,
                                    int idSong /* = -1 */,
                                    const Filter& filter /* = Filter() */,
-                                   const SortDescription& sortDescription /* = SortDescription() */,
                                    bool countOnly /* = false */)
 {
   if (nullptr == m_pDB)
@@ -5540,7 +5540,7 @@ bool CMusicDatabase::GetArtistsNav(const std::string& strBaseDir,
     if (!musicUrl.HasOption("albumartistsonly"))
       musicUrl.AddOption("albumartistsonly", albumArtistsOnly);
 
-    bool result = GetArtistsByWhere(musicUrl.ToString(), filter, items, sortDescription, countOnly);
+    bool result = GetArtistsByWhere(musicUrl.ToString(), items, sortDescription, filter, countOnly);
 
     return result;
   }
@@ -5552,12 +5552,11 @@ bool CMusicDatabase::GetArtistsNav(const std::string& strBaseDir,
   return false;
 }
 
-bool CMusicDatabase::GetArtistsByWhere(
-    const std::string& strBaseDir,
-    const Filter& filter,
-    CFileItemList& items,
-    const SortDescription& sortDescription /* = SortDescription() */,
-    bool countOnly /* = false */)
+bool CMusicDatabase::GetArtistsByWhere(const std::string& strBaseDir,
+                                       CFileItemList& items,
+                                       const SortDescription& sortDescription,
+                                       const Filter& filter,
+                                       bool countOnly /* = false */)
 {
   if (nullptr == m_pDB)
     return false;
@@ -5773,10 +5772,10 @@ bool CMusicDatabase::GetAlbumFromSong(int idSong, CAlbum& album)
 
 bool CMusicDatabase::GetAlbumsNav(const std::string& strBaseDir,
                                   CFileItemList& items,
+                                  const SortDescription& sortDescription,
                                   int idGenre /* = -1 */,
                                   int idArtist /* = -1 */,
                                   const Filter& filter /* = Filter() */,
-                                  const SortDescription& sortDescription /* = SortDescription() */,
                                   bool countOnly /* = false */)
 {
   CMusicDbUrl musicUrl;
@@ -5790,15 +5789,14 @@ bool CMusicDatabase::GetAlbumsNav(const std::string& strBaseDir,
   if (idArtist > 0)
     musicUrl.AddOption("artistid", idArtist);
 
-  return GetAlbumsByWhere(musicUrl.ToString(), filter, items, sortDescription, countOnly);
+  return GetAlbumsByWhere(musicUrl.ToString(), items, sortDescription, filter, countOnly);
 }
 
-bool CMusicDatabase::GetAlbumsByWhere(
-    const std::string& baseDir,
-    const Filter& filter,
-    CFileItemList& items,
-    const SortDescription& sortDescription /* = SortDescription() */,
-    bool countOnly /* = false */)
+bool CMusicDatabase::GetAlbumsByWhere(const std::string& baseDir,
+                                      CFileItemList& items,
+                                      const SortDescription& sortDescription,
+                                      const Filter& filter,
+                                      bool countOnly /* = false */)
 {
   if (m_pDB == nullptr || m_pDS == nullptr)
     return false;
@@ -5967,9 +5965,9 @@ bool CMusicDatabase::GetAlbumsByWhere(
 
 bool CMusicDatabase::GetDiscsNav(const std::string& strBaseDir,
                                  CFileItemList& items,
+                                 const SortDescription& sortDescription,
                                  int idAlbum,
                                  const Filter& filter,
-                                 const SortDescription& sortDescription,
                                  bool countOnly)
 {
   CMusicDbUrl musicUrl;
@@ -5979,25 +5977,25 @@ bool CMusicDatabase::GetDiscsNav(const std::string& strBaseDir,
   if (idAlbum > 0)
     musicUrl.AddOption("albumid", idAlbum);
 
-  return GetDiscsByWhere(musicUrl, filter, items, sortDescription, countOnly);
+  return GetDiscsByWhere(musicUrl, items, sortDescription, filter, countOnly);
 }
 
 bool CMusicDatabase::GetDiscsByWhere(const std::string& baseDir,
-                                     const Filter& filter,
                                      CFileItemList& items,
                                      const SortDescription& sortDescription,
+                                     const Filter& filter,
                                      bool countOnly)
 {
   CMusicDbUrl musicUrl;
   if (!musicUrl.FromString(baseDir))
     return false;
-  return GetDiscsByWhere(musicUrl, filter, items, sortDescription, countOnly);
+  return GetDiscsByWhere(musicUrl, items, sortDescription, filter, countOnly);
 }
 
 bool CMusicDatabase::GetDiscsByWhere(CMusicDbUrl& musicUrl,
-                                     const Filter& filter,
                                      CFileItemList& items,
                                      const SortDescription& sortDescription,
+                                     const Filter& filter,
                                      bool countOnly)
 {
   if (m_pDB == nullptr || m_pDS == nullptr)
@@ -6187,17 +6185,16 @@ int CMusicDatabase::GetDiscsCount(const std::string& baseDir, const Filter& filt
 {
   int iDiscTotal = -1;
   CFileItemList itemscount;
-  if (GetDiscsByWhere(baseDir, filter, itemscount, SortDescription(), true))
+  if (GetDiscsByWhere(baseDir, itemscount, SortDescription(), filter, true))
     iDiscTotal = itemscount.GetProperty("total").asInteger32();
   return iDiscTotal;
 }
 
-bool CMusicDatabase::GetSongsFullByWhere(
-    const std::string& baseDir,
-    const Filter& filter,
-    CFileItemList& items,
-    const SortDescription& sortDescription /* = SortDescription() */,
-    bool artistData /* = false*/)
+bool CMusicDatabase::GetSongsFullByWhere(const std::string& baseDir,
+                                         CFileItemList& items,
+                                         const SortDescription& sortDescription,
+                                         const Filter& filter,
+                                         bool artistData /* = false*/)
 {
   if (m_pDB == nullptr || m_pDS == nullptr)
     return false;
@@ -6440,113 +6437,6 @@ bool CMusicDatabase::GetSongsFullByWhere(
   return false;
 }
 
-bool CMusicDatabase::GetSongsByWhere(
-    const std::string& baseDir,
-    const Filter& filter,
-    CFileItemList& items,
-    const SortDescription& sortDescription /* = SortDescription() */)
-{
-  if (m_pDB == nullptr || m_pDS == nullptr)
-    return false;
-
-  try
-  {
-    int total = -1;
-
-    std::string strSQL = "SELECT %s FROM songview ";
-
-    Filter extFilter = filter;
-    CMusicDbUrl musicUrl;
-    SortDescription sorting = sortDescription;
-    if (!musicUrl.FromString(baseDir) || !GetFilter(musicUrl, extFilter, sorting))
-      return false;
-
-    // if there are extra WHERE conditions we might need access
-    // to songview for these conditions
-    if (extFilter.where.find("albumview") != std::string::npos)
-    {
-      extFilter.AppendJoin("JOIN albumview ON albumview.idAlbum = songview.idAlbum");
-      extFilter.AppendGroup("songview.idSong");
-    }
-
-    std::string strSQLExtra;
-    if (!BuildSQL(strSQLExtra, extFilter, strSQLExtra))
-      return false;
-
-    // Apply the limiting directly here if there's no special sorting but limiting
-    if (extFilter.limit.empty() && sorting.sortBy == SortByNone &&
-        (sorting.limitStart > 0 || sorting.limitEnd > 0))
-    {
-      total = GetSingleValueInt(PrepareSQL(strSQL, "COUNT(1)") + strSQLExtra, *m_pDS);
-      strSQLExtra += DatabaseUtils::BuildLimitClause(sorting.limitEnd, sorting.limitStart);
-    }
-
-    strSQL = PrepareSQL(strSQL, !filter.fields.empty() && filter.fields.compare("*") != 0
-                                    ? filter.fields.c_str()
-                                    : "songview.*") +
-             strSQLExtra;
-
-    CLog::LogF(LOGDEBUG, "query = {}", strSQL);
-    // run query
-    if (!m_pDS->query(strSQL))
-      return false;
-
-    int iRowsFound = m_pDS->num_rows();
-    if (iRowsFound == 0)
-    {
-      m_pDS->close();
-      return true;
-    }
-
-    // store the total value of items as a property
-    if (total < iRowsFound)
-      total = iRowsFound;
-    items.SetProperty("total", total);
-
-    DatabaseResults results;
-    results.reserve(iRowsFound);
-    if (!SortUtils::SortFromDataset(sorting, MediaTypeSong, *m_pDS, results))
-      return false;
-
-    // get data from returned rows
-    items.Reserve(results.size());
-    const dbiplus::query_data& data = m_pDS->get_result_set().records;
-    int count = 0;
-    for (const auto& i : results)
-    {
-      const auto targetRow = static_cast<unsigned int>(i.at(FieldRow).asInteger());
-      const dbiplus::sql_record* const record = data.at(targetRow);
-
-      try
-      {
-        auto item{std::make_shared<CFileItem>()};
-        GetFileItemFromDataset(record, item.get(), musicUrl);
-        //! @todo remove hack to use program count for sorting by database returned order
-        count++;
-        item->SetProgramCount(count);
-        items.Add(std::move(item));
-      }
-      catch (...)
-      {
-        m_pDS->close();
-        CLog::LogF(LOGERROR, "out of memory loading query: {}", filter.where);
-        return !items.IsEmpty();
-      }
-    }
-
-    // cleanup
-    m_pDS->close();
-    return true;
-  }
-  catch (...)
-  {
-    // cleanup
-    m_pDS->close();
-    CLog::LogF(LOGERROR, "({}) failed", filter.where);
-  }
-  return false;
-}
-
 bool CMusicDatabase::GetSongsByYear(const std::string& baseDir, CFileItemList& items, int year)
 {
   CMusicDbUrl musicUrl;
@@ -6556,15 +6446,15 @@ bool CMusicDatabase::GetSongsByYear(const std::string& baseDir, CFileItemList& i
   musicUrl.AddOption("year", year);
 
   Filter filter;
-  return GetSongsFullByWhere(baseDir, filter, items, SortDescription(), true);
+  return GetSongsFullByWhere(baseDir, items, SortDescription(), filter, true);
 }
 
 bool CMusicDatabase::GetSongsNav(const std::string& strBaseDir,
                                  CFileItemList& items,
+                                 const SortDescription& sortDescription,
                                  int idGenre,
                                  int idArtist,
-                                 int idAlbum,
-                                 const SortDescription& sortDescription /* = SortDescription() */)
+                                 int idAlbum)
 {
   CMusicDbUrl musicUrl;
   if (!musicUrl.FromString(strBaseDir))
@@ -6580,7 +6470,7 @@ bool CMusicDatabase::GetSongsNav(const std::string& strBaseDir,
     musicUrl.AddOption("artistid", idArtist);
 
   Filter filter;
-  return GetSongsFullByWhere(musicUrl.ToString(), filter, items, sortDescription, true);
+  return GetSongsFullByWhere(musicUrl.ToString(), items, sortDescription, filter, true);
 }
 
 namespace
@@ -6645,12 +6535,11 @@ const std::array<TranslateJSONField, 35> JSONtoDBArtist = {{
 // clang-format on
 } // unnamed namespace
 
-bool CMusicDatabase::GetArtistsByWhereJSON(
-    const std::set<std::string, std::less<>>& fields,
-    const std::string& baseDir,
-    CVariant& result,
-    int& total,
-    const SortDescription& sortDescription /* = SortDescription() */)
+bool CMusicDatabase::GetArtistsByWhereJSON(const std::set<std::string, std::less<>>& fields,
+                                           const std::string& baseDir,
+                                           CVariant& result,
+                                           int& total,
+                                           const SortDescription& sortDescription)
 {
   if (nullptr == m_pDB)
     return false;
@@ -7382,12 +7271,11 @@ const std::array<TranslateJSONField, 35> JSONtoDBAlbum = {{
 // clang-format on
 } //unnamed namespace
 
-bool CMusicDatabase::GetAlbumsByWhereJSON(
-    const std::set<std::string, std::less<>>& fields,
-    const std::string& baseDir,
-    CVariant& result,
-    int& total,
-    const SortDescription& sortDescription /* = SortDescription() */)
+bool CMusicDatabase::GetAlbumsByWhereJSON(const std::set<std::string, std::less<>>& fields,
+                                          const std::string& baseDir,
+                                          CVariant& result,
+                                          int& total,
+                                          const SortDescription& sortDescription)
 {
 
   if (nullptr == m_pDB)
@@ -8500,7 +8388,7 @@ std::string CMusicDatabase::AlphanumericSortSQL(const std::string& strField,
   stored in the db.
   */
   std::string DESC;
-  if (sortOrder == SortOrderDescending)
+  if (sortOrder == SortOrder::DESCENDING)
     DESC = " DESC";
   std::string strSort;
 
@@ -11856,21 +11744,21 @@ bool CMusicDatabase::ScraperInUse(const std::string& scraperID) const
 
 bool CMusicDatabase::GetItems(const std::string& strBaseDir,
                               CFileItemList& items,
-                              const Filter& filter /* = Filter() */,
-                              const SortDescription& sortDescription /* = SortDescription() */)
+                              const SortDescription& sortDescription,
+                              const Filter& filter /* = Filter() */)
 {
   CMusicDbUrl musicUrl;
   if (!musicUrl.FromString(strBaseDir))
     return false;
 
-  return GetItems(strBaseDir, musicUrl.GetType(), items, filter, sortDescription);
+  return GetItems(strBaseDir, musicUrl.GetType(), items, sortDescription, filter);
 }
 
 bool CMusicDatabase::GetItems(const std::string& strBaseDir,
                               const std::string& itemType,
                               CFileItemList& items,
-                              const Filter& filter /* = Filter() */,
-                              const SortDescription& sortDescription /* = SortDescription() */)
+                              const SortDescription& sortDescription,
+                              const Filter& filter /* = Filter() */)
 {
   if (StringUtils::EqualsNoCase(itemType, "genres"))
     return GetGenresNav(strBaseDir, items, filter);
@@ -11881,16 +11769,16 @@ bool CMusicDatabase::GetItems(const std::string& strBaseDir,
   else if (StringUtils::EqualsNoCase(itemType, "roles"))
     return GetRolesNav(strBaseDir, items, filter);
   else if (StringUtils::EqualsNoCase(itemType, "artists"))
-    return GetArtistsNav(strBaseDir, items,
+    return GetArtistsNav(strBaseDir, items, sortDescription,
                          !CServiceBroker::GetSettingsComponent()->GetSettings()->GetBool(
                              CSettings::SETTING_MUSICLIBRARY_SHOWCOMPILATIONARTISTS),
-                         -1, -1, -1, filter, sortDescription);
+                         -1, -1, -1, filter, false);
   else if (StringUtils::EqualsNoCase(itemType, "albums"))
-    return GetAlbumsByWhere(strBaseDir, filter, items, sortDescription);
+    return GetAlbumsByWhere(strBaseDir, items, sortDescription, filter);
   else if (StringUtils::EqualsNoCase(itemType, "discs"))
-    return GetDiscsByWhere(strBaseDir, filter, items, sortDescription);
+    return GetDiscsByWhere(strBaseDir, items, sortDescription, filter);
   else if (StringUtils::EqualsNoCase(itemType, "songs"))
-    return GetSongsFullByWhere(strBaseDir, filter, items, sortDescription, true);
+    return GetSongsFullByWhere(strBaseDir, items, sortDescription, filter, true);
 
   return false;
 }
@@ -13273,7 +13161,7 @@ int CMusicDatabase::GetOrderFilter(const std::string& type,
   std::vector<std::string> orderfields;
   std::string DESC;
 
-  if (sorting.sortOrder == SortOrderDescending)
+  if (sorting.sortOrder == SortOrder::DESCENDING)
     DESC = " DESC";
 
   if (sorting.sortBy == SortByRandom)
@@ -13378,7 +13266,7 @@ bool CMusicDatabase::GetFilter(CDbUrl& musicUrl, Filter& filter, SortDescription
         sorting.limitEnd = xsp.GetLimit();
       if (xsp.GetOrder() != SortByNone)
         sorting.sortBy = xsp.GetOrder();
-      sorting.sortOrder = xsp.GetOrderAscending() ? SortOrderAscending : SortOrderDescending;
+      sorting.sortOrder = xsp.GetOrderAscending() ? SortOrder::ASCENDING : SortOrder::DESCENDING;
       if (CServiceBroker::GetSettingsComponent()->GetSettings()->GetBool(
               CSettings::SETTING_FILELISTS_IGNORETHEWHENSORTING))
         sorting.sortAttributes = SortAttributeIgnoreArticle;
