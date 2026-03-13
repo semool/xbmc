@@ -1039,8 +1039,9 @@ bool CXBMCApp::StartActivity(const std::string& package,
     if (!pathname.empty() && StringUtils::StartsWith(pathname, "/storage/"))
     {
       // generate a content URI
-      jniURI = CJNIFileProvider::getUriForFile(CXBMCApp::Get(), "org.xbmc.kodi.fileprovider",
-                                               CJNIFile(pathname));
+      std::string authority{CCompileInfo::GetPackage()};
+      authority.append(".fileprovider");
+      jniURI = CJNIFileProvider::getUriForFile(CXBMCApp::Get(), authority, CJNIFile(pathname));
 
       CLog::LogF(LOGINFO, "Share using FileProvider: {}", jniURI.toString());
 
@@ -1091,8 +1092,26 @@ bool CXBMCApp::StartActivity(const std::string& package,
       if (e["type"] == "string")
       {
         newIntent.putExtra(e["key"].asString(), e["value"].asString());
-        CLog::LogF(LOGDEBUG, "Putting extra key: {}, value: {}", e["key"].asString(),
+        CLog::LogF(LOGDEBUG, "Putting extra key: {}, string value: {}", e["key"].asString(),
                    e["value"].asString());
+      }
+      else if (e["type"] == "boolean")
+      {
+        newIntent.putExtra(e["key"].asString(), e["value"].asBoolean());
+        CLog::LogF(LOGDEBUG, "Putting extra key: {}, boolean value: {}", e["key"].asString(),
+                   e["value"].asBoolean());
+      }
+      else if (e["type"] == "int")
+      {
+        newIntent.putExtra(e["key"].asString(), e["value"].asInteger32());
+        CLog::LogF(LOGDEBUG, "Putting extra key: {}, int value: {}", e["key"].asString(),
+                   e["value"].asInteger32());
+      }
+      else if (e["type"] == "long")
+      {
+        newIntent.putExtra(e["key"].asString(), e["value"].asInteger());
+        CLog::LogF(LOGDEBUG, "Putting extra key: {}, long value: {}", e["key"].asString(),
+                   e["value"].asInteger());
       }
       else
         CLog::LogF(LOGDEBUG, "Intent extras data type ({}) not implemented", e["type"].asString());
