@@ -1530,15 +1530,13 @@ CVideoInfoScanner::~CVideoInfoScanner()
             ? UseRemoteArtWithLocalScraper::NO
             : UseRemoteArtWithLocalScraper::YES};
 
-    std::string path;
-    const int playlist = pItem->HasVideoInfoTag() ? pItem->GetVideoInfoTag()->m_iTrack : -1;
-    if (playlist > -1 && (content == ContentType::MOVIES || content == ContentType::MOVIE_VERSIONS))
+    std::string path{pItem->GetPath()};
+    const int playlist{pItem->HasVideoInfoTag() ? pItem->GetVideoInfoTag()->m_iTrack : -1};
+    if (playlist > -1 && (::UTILS::DISCS::IsBlurayDiscImage(path) || URIUtils::IsBDFile(path)))
     {
-      path = URIUtils::GetBlurayPlaylistPath(pItem->GetPath(), playlist);
+      path = URIUtils::GetBlurayPlaylistPath(path, playlist);
       pItem->SetDynPath(path);
     }
-    else
-      path = pItem->GetPath();
 
     if (!libraryImport)
       GetArtwork(pItem, content, videoFolder, useLocal && !pItem->IsPlugin(),
@@ -1982,7 +1980,7 @@ CVideoInfoScanner::~CVideoInfoScanner()
     pItem->SetArt(art);
 
     // parent folder to apply the thumb to and to search for local actor thumbs
-    std::string parentDir = URIUtils::GetBasePath(pItem->GetPath());
+    std::string parentDir = URIUtils::GetParentPath(pItem->GetPath());
     if (CServiceBroker::GetSettingsComponent()->GetSettings()->GetBool(
             CSettings::SETTING_VIDEOLIBRARY_ACTORTHUMBS))
       FetchActorThumbs(movieDetails.m_cast, actorArtPath.empty() ? parentDir : actorArtPath,
