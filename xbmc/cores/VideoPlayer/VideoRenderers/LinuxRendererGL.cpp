@@ -260,9 +260,6 @@ bool CLinuxRendererGL::Configure(const VideoPicture &picture, float fps, unsigne
   if (!CServiceBroker::GetWinSystem()->SetVideoOutput(&picture))
     CLog::Log(LOGWARNING, "LinuxRendererGL::Configure: SetVideoOutput failed");
 
-  // setup the background colour
-  m_clearColour = CServiceBroker::GetWinSystem()->UseLimitedColor() ? (16.0f / 0xff) : 0.0f;
-
   if (picture.color_transfer == AVCOL_TRC_SMPTE2084 ||
       picture.color_transfer == AVCOL_TRC_ARIB_STD_B67)
   {
@@ -270,6 +267,12 @@ bool CLinuxRendererGL::Configure(const VideoPicture &picture, float fps, unsigne
     CLog::Log(LOGDEBUG, "LinuxRendererGL::Configure: HDR passthrough: {}",
               m_passthroughHDR ? "on" : "off");
   }
+
+  m_hdrFboActive =
+      m_passthroughHDR && CServiceBroker::GetWinSystem()->SetGuiCompositing(picture.color_transfer);
+  if (m_passthroughHDR && !m_hdrFboActive)
+    CLog::Log(LOGWARNING, "LinuxRendererGL::Configure: HDR passthrough active but GUI "
+                          "compositing not supported by windowing system");
 
   // load 3DLUT
   if (m_ColorManager->IsEnabled())
@@ -597,7 +600,7 @@ void CLinuxRendererGL::ClearBackBufferQuad()
   GLint posLoc = m_renderSystem->ShaderGetPos();
   GLint uniCol = m_renderSystem->ShaderGetUniCol();
 
-  glUniform4f(uniCol, m_clearColour / 255.0f, m_clearColour / 255.0f, m_clearColour / 255.0f, 1.0f);
+  glUniform4f(uniCol, 0.0f, 0.0f, 0.0f, 1.0f);
 
   GLuint vertexVBO;
   glGenBuffers(1, &vertexVBO);
@@ -633,7 +636,7 @@ void CLinuxRendererGL::DrawBlackBars()
   GLint posLoc = m_renderSystem->ShaderGetPos();
   GLint uniCol = m_renderSystem->ShaderGetUniCol();
 
-  glUniform4f(uniCol, m_clearColour / 255.0f, m_clearColour / 255.0f, m_clearColour / 255.0f, 1.0f);
+  glUniform4f(uniCol, 0.0f, 0.0f, 0.0f, 1.0f);
 
   int osWindowWidth = CServiceBroker::GetWinSystem()->GetGfxContext().GetWidth();
   int osWindowHeight = CServiceBroker::GetWinSystem()->GetGfxContext().GetHeight();
@@ -1078,6 +1081,8 @@ void CLinuxRendererGL::UnInit()
 
   if (m_bConfigured)
   {
+    m_hdrFboActive = false;
+    CServiceBroker::GetWinSystem()->SetGuiCompositing(false);
     CServiceBroker::GetWinSystem()->SetHDR(nullptr);
     m_passthroughHDR = false;
     CServiceBroker::GetWinSystem()->SetVideoOutput(nullptr);
@@ -1087,6 +1092,11 @@ void CLinuxRendererGL::UnInit()
   m_fbo.fbo.Cleanup();
   m_bValidated = false;
   m_bConfigured = false;
+}
+
+bool CLinuxRendererGL::IsGuiLayer()
+{
+  return !m_hdrFboActive;
 }
 
 bool CLinuxRendererGL::Render(unsigned int flags, int renderBuffer)

@@ -82,6 +82,8 @@ public:
   bool Supports(ESCALINGMETHOD method) const override;
 
   CRenderCapture* GetRenderCapture() override;
+  bool IsGuiLayer() override;
+  bool HasVideoPlane() override { return false; }
 
 protected:
 
@@ -220,7 +222,7 @@ protected:
   bool m_toneMap = false;
   ETONEMAPMETHOD m_toneMapMethod = VS_TONEMAPMETHOD_OFF;
   bool m_passthroughHDR = false;
-  float m_clearColour = 0.0f;
+  bool m_hdrFboActive{false};
   bool m_pboSupported = true;
   bool m_pboUsed = false;
   bool m_nonLinStretch = false;
