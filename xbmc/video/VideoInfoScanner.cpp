@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2005-2018 Team Kodi
+ *  Copyright (C) 2005-2026 Team Kodi
  *  This file is part of Kodi - https://kodi.tv
  *
  *  SPDX-License-Identifier: GPL-2.0-or-later
@@ -377,7 +377,7 @@ CVideoInfoScanner::~CVideoInfoScanner()
         content == ContentType::TVSHOWS ? m_advancedSettings->m_tvshowExcludeFromScanRegExps
                                         : m_advancedSettings->m_moviesExcludeFromScanRegExps;
 
-    if (CUtil::ExcludeFileOrFolder(strDirectory, regexps))
+    if (CUtil::ExcludeFileOrFolder(strDirectory, regexps, &m_regexpCache))
       return true;
 
     if (HasNoMedia(strDirectory))
@@ -667,7 +667,8 @@ CVideoInfoScanner::~CVideoInfoScanner()
       if (CUtil::ExcludeFileOrFolder(pItem->GetPath(),
                                      (content == ContentType::TVSHOWS)
                                          ? m_advancedSettings->m_tvshowExcludeFromScanRegExps
-                                         : m_advancedSettings->m_moviesExcludeFromScanRegExps))
+                                         : m_advancedSettings->m_moviesExcludeFromScanRegExps,
+                                     &m_regexpCache))
         continue;
 
       if (info2->Content() == ContentType::MOVIES || info2->Content() == ContentType::MUSICVIDEOS)
@@ -1214,7 +1215,7 @@ CVideoInfoScanner::~CVideoInfoScanner()
                 ? UseRemoteArtWithLocalScraper::NO
                 : UseRemoteArtWithLocalScraper::YES};
         GetSeasonThumbs(showInfo, seasonArt, CVideoThumbLoader::GetArtTypes(MediaTypeSeason),
-                        useLocal && !item->IsPlugin(), useRemoteArt);
+                        useLocal && !item->IsPlugin(), useRemoteArt, &m_regexpCache);
         for (const auto& [season, art] : seasonArt)
         {
           const int seasonID{m_database.AddSeason(static_cast<int>(showID), season)};
@@ -1386,7 +1387,7 @@ CVideoInfoScanner::~CVideoInfoScanner()
         continue;
 
       // Discard all exclude files defined by regExExcludes
-      if (CUtil::ExcludeFileOrFolder(items[i]->GetPath(), regexps))
+      if (CUtil::ExcludeFileOrFolder(items[i]->GetPath(), regexps, &m_regexpCache))
         continue;
 
       /*
@@ -1397,8 +1398,9 @@ CVideoInfoScanner::~CVideoInfoScanner()
       if (ProcessItemByVideoInfoTag(items[i].get(), episodeList))
         continue;
 
-      if (!CEpisodeUtils::EnumerateEpisodeItem(items[i].get(), episodeList))
-        CLog::Log(LOGDEBUG, "VideoInfoScanner: Could not enumerate file {}", CURL::GetRedacted(items[i]->GetPath()));
+      if (!CEpisodeUtils::EnumerateEpisodeItem(items[i].get(), episodeList, &m_regexpCache))
+        CLog::Log(LOGDEBUG, "VideoInfoScanner: Could not enumerate file {}",
+                  CURL::GetRedacted(items[i]->GetPath()));
     }
     return true;
   }
@@ -1588,23 +1590,13 @@ CVideoInfoScanner::~CVideoInfoScanner()
       }
     }
 
-    /* As HasStreamDetails() returns true for TV shows (because the scraper calls SetVideoInfoTag()
-     * directly to set the duration) a better test is just to see if we have any common flag info
-     * missing.  If we have already read an nfo file then this data should be populated, otherwise
-     * get it from the video file */
-
     if (CServiceBroker::GetSettingsComponent()->GetSettings()->GetBool(
-            CSettings::SETTING_MYVIDEOS_EXTRACTFLAGS))
+            CSettings::SETTING_MYVIDEOS_EXTRACTFLAGS) &&
+        !movieDetails.HasStreamDetails())
     {
-      const auto& strmdetails = movieDetails.m_streamDetails;
-      if (strmdetails.GetVideoCodec(1).empty() || strmdetails.GetVideoHeight(1) == 0 ||
-          strmdetails.GetVideoWidth(1) == 0 || strmdetails.GetVideoDuration(1) == 0)
-
-      {
-        CDVDFileInfo::GetFileStreamDetails(pItem);
-        CLog::Log(LOGDEBUG, "VideoInfoScanner: Extracted filestream details from video file {}",
-                  CURL::GetRedacted(path));
-      }
+      CDVDFileInfo::GetFileStreamDetails(pItem);
+      CLog::Log(LOGDEBUG, "VideoInfoScanner: Extracted filestream details from video file {}",
+                CURL::GetRedacted(path));
     }
 
     CLog::Log(LOGDEBUG, "VideoInfoScanner: Adding new item to {}:{}", content,
@@ -1614,7 +1606,7 @@ CVideoInfoScanner::~CVideoInfoScanner()
     if (content == ContentType::MOVIES)
     {
       // find local trailer first
-      std::string strTrailer = UTILS::FindTrailer(*pItem);
+      std::string strTrailer = UTILS::FindTrailer(*pItem, &m_regexpCache);
       if (!strTrailer.empty())
         movieDetails.m_strTrailer = strTrailer;
 
@@ -1713,7 +1705,7 @@ CVideoInfoScanner::~CVideoInfoScanner()
 
         if (!libraryImport)
           GetSeasonThumbs(movieDetails, seasonArt, CVideoThumbLoader::GetArtTypes(MediaTypeSeason),
-                          useLocal && !pItem->IsPlugin(), useRemoteArt);
+                          useLocal && !pItem->IsPlugin(), useRemoteArt, &m_regexpCache);
 
         lResult = m_database.SetDetailsForTvShow(multipath, movieDetails, art, seasonArt);
         movieDetails.m_iDbId = lResult;
@@ -2365,7 +2357,8 @@ CVideoInfoScanner::~CVideoInfoScanner()
 
     for (int i = 0; i < items.Size(); ++i)
     {
-      if (items[i]->IsFolder() && !CUtil::ExcludeFileOrFolder(items[i]->GetPath(), excludes))
+      if (items[i]->IsFolder() &&
+          !CUtil::ExcludeFileOrFolder(items[i]->GetPath(), excludes, &m_regexpCache))
         return false;
     }
     return true;
@@ -2435,7 +2428,8 @@ CVideoInfoScanner::~CVideoInfoScanner()
                                           KODI::ART::SeasonsArtwork& seasonArt,
                                           const std::vector<std::string>& artTypes,
                                           bool useLocal /* = true */,
-                                          UseRemoteArtWithLocalScraper useRemoteArt /* = yes */)
+                                          UseRemoteArtWithLocalScraper useRemoteArt /* = yes */,
+                                          KODI::REGEXP::RegExpCache* cache /* = nullptr*/)
   {
     int artLevel = CServiceBroker::GetSettingsComponent()->GetSettings()->
       GetInt(CSettings::SETTING_VIDEOLIBRARY_ARTWORK_LEVEL);
@@ -2454,15 +2448,16 @@ CVideoInfoScanner::~CVideoInfoScanner()
                                      DIR_FLAG_NO_FILE_INFO);
       }
       extensions.erase(std::remove(extensions.begin(), extensions.end(), '.'), extensions.end());
-      CRegExp reg;
-      if (items.Size() && reg.RegComp("season([0-9]+)(-[a-z0-9]+)?\\.(" + extensions + ")"))
+      std::shared_ptr<CRegExp> reg;
+      const std::string pattern = "season([0-9]+)(-[a-z0-9]+)?\\.(" + extensions + ")";
+      if (!items.IsEmpty() && (reg = KODI::REGEXP::GetRegExp(pattern, cache)) != nullptr)
       {
         for (const auto& item : items)
         {
           std::string name = URIUtils::GetFileName(item->GetPath());
-          if (reg.RegFind(name) > -1)
+          if (reg->RegFind(name) > -1)
           {
-            int season = atoi(reg.GetMatch(1).c_str());
+            int season = atoi(reg->GetMatch(1).c_str());
             if (season > maxSeasons)
               maxSeasons = season;
           }
