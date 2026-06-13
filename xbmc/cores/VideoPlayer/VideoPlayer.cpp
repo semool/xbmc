@@ -1003,6 +1003,8 @@ bool CVideoPlayer::OpenDemuxStream()
     if (item.HasVideoInfoTag())
       m_pInputStream->SaveCurrentState(item.GetVideoInfoTag()->m_streamDetails);
   }
+  else
+    m_pInputStream->SaveCurrentState({});
 
   return true;
 }
@@ -5654,6 +5656,11 @@ void CVideoPlayer::TriggerUpdateResolution()
 bool CVideoPlayer::IsRenderingVideo() const
 {
   return m_renderManager.IsConfigured();
+}
+
+bool CVideoPlayer::HasVisibleOverlay() const
+{
+  return m_renderManager.HasVisibleOverlay();
 }
 
 bool CVideoPlayer::IsLiveStream() const
