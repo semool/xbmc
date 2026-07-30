@@ -8,6 +8,7 @@
 
 #include "VideoDatabase.h"
 
+#include "DatabaseTypes.h"
 #include "FileItem.h"
 #include "FileItemList.h"
 #include "GUIInfoManager.h"
@@ -98,7 +99,9 @@ CVideoDatabase::FileInformation::FileInformation(std::string&& newPath,
 }
 
 //********************************************************************************************************************************
-CVideoDatabase::CVideoDatabase() = default;
+CVideoDatabase::CVideoDatabase() : CDatabase(KODI::DATABASE::TYPE_VIDEOS)
+{
+}
 
 //********************************************************************************************************************************
 CVideoDatabase::~CVideoDatabase() = default;
@@ -10690,7 +10693,7 @@ void CVideoDatabase::ExportToXML(const std::string &path, bool singleFile /* = t
           }
         }
 
-        const std::string itemPath = URIUtils::AddFileToFolder(
+        const std::string itemPath = URIUtils::AddFileToFolderMatchingEncoding(
             movieSetsDir, CUtil::MakeLegalFileName(title, LegalPath::WIN32_COMPAT));
         if (CDirectory::Exists(itemPath) || CDirectory::Create(itemPath))
         {
@@ -11300,7 +11303,7 @@ void CVideoDatabase::ImportFromXML(const std::string &path)
         item.SetArt(artItem.GetArt());
         if (item.GetVideoInfoTag()->m_set.HasTitle())
         {
-          std::string setPath = URIUtils::AddFileToFolder(
+          std::string setPath = URIUtils::AddFileToFolderMatchingEncoding(
               movieSetsDir, CUtil::MakeLegalFileName(item.GetVideoInfoTag()->m_set.GetTitle(),
                                                      LegalPath::WIN32_COMPAT));
           if (CDirectory::Exists(setPath))
