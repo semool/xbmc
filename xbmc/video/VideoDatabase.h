@@ -645,6 +645,8 @@ public:
   void GetEpisodesByName(const std::string& strSearch, CFileItemList& items);
   void GetMusicVideosByName(const std::string& strSearch, CFileItemList& items);
 
+  void GetMovieExtrasByName(const std::string& strSearch, CFileItemList& items);
+
   std::string GetPlotByShowId(int idShow);
   void GetEpisodesByPlot(const std::string& strSearch, CFileItemList& items);
   void GetMoviesByPlot(const std::string& strSearch, CFileItemList& items);
@@ -977,7 +979,7 @@ public:
                                int idVideoVersion,
                                VideoAssetType assetType);
 
-  void SetDefaultVideoVersion(VideoDbContentType itemType, int dbId, int idFile);
+  bool SetDefaultVideoVersion(VideoDbContentType itemType, int dbId, int idFile);
   void SetVideoVersion(int idFile, int idVideoVersion);
   int AddOrValidateVideoVersionType(const std::string& typeVideoVersion);
   int AddVideoVersionType(const std::string& typeVideoVersion,
