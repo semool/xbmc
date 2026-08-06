@@ -7971,7 +7971,19 @@ msgctxt "#13557"
 msgid "Skip delay"
 msgstr ""
 
-#empty strings from id 13558 to 13600
+#. Name of a setting to configure the maximum fast-forward speed with smooth/continuous playback
+#: system/settings/settings.xml
+msgctxt "#13558"
+msgid "Maximum smooth fast-forward speed"
+msgstr ""
+
+#. Playback speed unit used to format speeds for display ex. 2x, 4x, ...
+#: xbmc/settings/PlayerSettings.cpp
+msgctxt "#13559"
+msgid "{0:d}x"
+msgstr ""
+
+#empty strings id 13600
 
 #: system/settings/darwin_tvos.xml
 msgctxt "#13601"
@@ -22954,7 +22966,13 @@ msgctxt "#37116"
 msgid "Adaptive"
 msgstr ""
 
-#empty strings from id 37117 to 37119
+#. Description of setting #13558 Maximum smooth fast-forward speed
+#: system/settings/settings.xml
+msgctxt "#37117"
+msgid "Cutoff of the analog fast-forward mode that shows every picture. Some hardware may not be able to keep up with the higher demand of the higher speeds."
+msgstr ""
+
+#empty strings from id 37118 to 37119
 
 #. Value of setting - Byte
 #: xbmc/settings/SevicesSettings.cpp
@@ -24814,7 +24832,13 @@ msgctxt "#40041"
 msgid "Assign playlist to current movie version?"
 msgstr ""
 
-#empty strings with id 40042 to 40201
+#. Different video version found dialog text for blurays
+#: xbmc/video/dialogs/GUIDialogVideoManagerVersions.cpp
+msgctxt "#40042"
+msgid "Found a different version of the movie \"{0:s}\" in playlist {1:s} of {2:s} - length {3:s}. Would you like to convert it into an additional version of the original?"
+msgstr ""
+
+#empty strings with id 40043 to 40201
 
 #. Ignore different video versions settting
 #: system/settings/settings.xml
@@ -24936,7 +24960,31 @@ msgctxt "#40224"
 msgid "Make the most recently scanned version of a movie the movie's default version.[CR]Helps identify new movie versions as recently added and locate them when the \"Unwatched\" filter of the library is turned on."
 msgstr ""
 
-#empty strings from id 40225 to 40399
+#. Setting to determine when art is retrieved - during or after scrape
+#: system/settings/settings.xml
+msgctxt "#40225"
+msgid "Retrieve art"
+msgstr ""
+
+#. Help for retrieve art during/after scrape setting
+#: system/settings/settings.xml
+msgctxt "#40226"
+msgid "Determines whether art is retrieved synchronously during scrape or in the background afterwards.[CR][During scrape] Art is retrieved synchronously during scrape. This significantly extends time taken to scrape.[CR][After scrape][Default] Art is retrieved in the background after scrape. Actor thumbnails may take a while to appear."
+msgstr ""
+
+#. Option for the retrieve art during/after scrape setting
+#: system/settings/settings.xml
+msgctxt "#40227"
+msgid "During scrape"
+msgstr ""
+
+#. Option for the retrieve art during/after scrape setting
+#: system/settings/settings.xml
+msgctxt "#40228"
+msgid "After scrape"
+msgstr ""
+
+#empty strings from id 40229 to 40399
 
 # Video versions
 

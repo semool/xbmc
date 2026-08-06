@@ -100,11 +100,13 @@ public:
   static constexpr auto SETTING_VIDEOLIBRARY_NEWVERSIONSAREDEFAULT =
       "videolibrary.newversionsaredefault";
   static constexpr auto SETTING_VIDEOLIBRARY_IGNOREVIDEOEXTRAS = "videolibrary.ignorevideoextras";
+  static constexpr auto SETTING_VIDEOLIBRARY_ARTRETRIEVALTIMING = "videolibrary.artretrievaltiming";
   static constexpr auto SETTING_LOCALE_AUDIOLANGUAGE = "locale.audiolanguage";
   static constexpr auto SETTING_VIDEOPLAYER_PREFERDEFAULTFLAG = "videoplayer.preferdefaultflag";
   static constexpr auto SETTING_VIDEOPLAYER_AUTOPLAYNEXTITEM = "videoplayer.autoplaynextitem";
   static constexpr auto SETTING_VIDEOPLAYER_SEEKSTEPS = "videoplayer.seeksteps";
   static constexpr auto SETTING_VIDEOPLAYER_SEEKDELAY = "videoplayer.seekdelay";
+  static constexpr auto SETTING_VIDEOPLAYER_MAX_SMOOTH_FF_SPEED = "videoplayer.maxsmoothff";
   static constexpr auto SETTING_VIDEOPLAYER_ADJUSTREFRESHRATE = "videoplayer.adjustrefreshrate";
   static constexpr auto SETTING_VIDEOPLAYER_USEDISPLAYASCLOCK = "videoplayer.usedisplayasclock";
   static constexpr auto SETTING_VIDEOPLAYER_ERRORINASPECT = "videoplayer.errorinaspect";

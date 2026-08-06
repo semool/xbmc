@@ -312,29 +312,46 @@ bool CVideoDatabase::GetSubPaths(const std::string& basepath,
     if (!m_pDB || !m_pDS)
       return false;
 
-    // Generate encoded paths
     std::string path(basepath);
     URIUtils::AddSlashAtEnd(path);
-    CURL url("udf://");
-    url.SetHostName(path);
-    std::string filePath{url.Get()};
-    URIUtils::RemoveSlashAtEnd(filePath);
-    url = CURL("bluray://");
-    url.SetHostName(filePath);
-    std::string isoPath{url.Get()};
-    URIUtils::RemoveSlashAtEnd(isoPath);
-    constexpr size_t udfPrefixLength = 6; // length of "udf://"
-    filePath = filePath.substr(udfPrefixLength); // Remove udf://
 
-    sql = "SELECT idPath, strPath FROM path WHERE (strPath LIKE '%s%%'";
+    const auto startsWith{[this](const std::string& prefix)
+                          {
+                            return PrepareSQL("SUBSTR(strPath,1,%i)='%s'",
+                                              StringUtils::utf8_strlen(prefix), prefix.c_str());
+                          }};
+
+    sql = "SELECT idPath, strPath FROM path WHERE " + startsWith(path);
     if (excludeDiscPaths)
-      sql += " AND idPath NOT IN (SELECT idPath FROM files WHERE strFileName LIKE 'video_ts.ifo')"
-             " AND idPath NOT IN (SELECT idPath FROM files WHERE strFileName LIKE 'index.bdmv')";
-    sql += ") OR (strPath LIKE '%s%%' OR strPath LIKE 'bluray://%s%%'"
-           " OR strPath LIKE 'zip://%s%%' OR strPath LIKE 'rar://%s%%' OR strPath LIKE "
-           "'archive://%s%%')";
-    sql = PrepareSQL(sql, path.c_str(), isoPath.c_str(), filePath.c_str(), filePath.c_str(),
-                     filePath.c_str(), filePath.c_str());
+    {
+      sql += " AND idPath NOT IN (SELECT idPath FROM files WHERE strFileName='video_ts.ifo')"
+             " AND idPath NOT IN (SELECT idPath FROM files WHERE strFileName='index.bdmv')";
+    }
+    else
+    {
+      // Generate encoded paths
+      // Terminal slashes removed as there is an encoded slash immediately prior
+      //  eg. zip://D%3a%5cMovies%5c'
+      CURL url("udf://");
+      url.SetHostName(path);
+      std::string filePath{url.Get()};
+      URIUtils::RemoveSlashAtEnd(filePath);
+      url = CURL("bluray://");
+      url.SetHostName(filePath);
+      std::string blurayIsoPath{url.Get()};
+      URIUtils::RemoveSlashAtEnd(blurayIsoPath);
+      constexpr size_t udfPrefixLength = 6; // length of "udf://"
+      filePath = filePath.substr(udfPrefixLength); // Remove udf://
+
+      // Return encoded media paths for content removal
+      // clang format-off
+      for (const std::string& prefix : {blurayIsoPath, "bluray://" + filePath, "zip://" + filePath,
+                                        "rar://" + filePath, "archive://" + filePath})
+      {
+        sql += " OR " + startsWith(prefix);
+      }
+      // clang format-on
+    }
 
     m_pDS->query(sql);
     while (!m_pDS->eof())
@@ -10599,6 +10616,7 @@ void CVideoDatabase::ExportToXML(const std::string &path, bool singleFile /* = t
       bool bSkip = false;
 
       std::string nfoFile;
+      std::string singlePath;
 
       // To be XML compliant multiple <movie> tags need to be enclosed in a <movies> tag
       bool multiMovie{false};
@@ -10643,7 +10661,8 @@ void CVideoDatabase::ExportToXML(const std::string &path, bool singleFile /* = t
         }
 
         CFileItem item(movie.m_strFileNameAndPath, false);
-        std::string singlePath{movie.m_strPath};
+        if (singlePath.empty())
+          singlePath = movie.m_strPath;
         if (!singleFile && CUtil::SupportsWriteFileOperations(movie.m_strFileNameAndPath))
         {
           if (!item.Exists(false))
@@ -11267,6 +11286,39 @@ void CVideoDatabase::ExportActorThumbs(const std::string& path,
   }
 }
 
+namespace
+{
+/*!
+ \brief Copy the actor thumbs resolved by GetArtwork() onto the item that will be saved.
+ \param artItem the temporary item GetArtwork() was called on.
+ \param item the item that will be saved to the database.
+ */
+void CopyActorThumbs(const CFileItem& artItem, CFileItem& item)
+{
+  const std::vector<SActorInfo>& cast{artItem.GetVideoInfoTag()->m_cast};
+  if (cast.empty())
+    return;
+
+  item.GetVideoInfoTag()->m_cast = cast;
+
+  // Nothing carries a thumb into an import (only <thumb> urls are exported), so any local thumb
+  // here was picked up from the export's actors folder
+  unsigned int local{0};
+  unsigned int remote{0};
+  for (const auto& actor : cast)
+  {
+    if (actor.thumb.empty())
+      continue;
+    if (URIUtils::IsRemote(actor.thumb))
+      ++remote;
+    else
+      ++local;
+  }
+  CLog::Log(LOGDEBUG, "Imported actor thumbs for '{}' - {} local, {} remote, {} without a thumb",
+            item.GetVideoInfoTag()->m_strTitle, local, remote, cast.size() - local - remote);
+}
+} // unnamed namespace
+
 void CVideoDatabase::ImportFromXML(const std::string &path)
 {
   CGUIDialogProgress* progress = nullptr;
@@ -11315,6 +11367,16 @@ void CVideoDatabase::ImportFromXML(const std::string &path)
     }
 
     std::string actorsDir(URIUtils::AddFileToFolder(path, "actors"));
+
+    // An import takes all of its information from local files, so honour the same setting as a
+    // local scraper does and do not retrieve remote art when it is set
+    using UseRemoteArt = CVideoInfoScanner::UseRemoteArtWithLocalScraper;
+    const UseRemoteArt useRemoteArt{CServiceBroker::GetSettingsComponent()
+                                            ->GetAdvancedSettings()
+                                            ->m_bNoRemoteArtWithLocalScraper
+                                        ? UseRemoteArt::NO
+                                        : UseRemoteArt::YES};
+
     std::string moviesDir(URIUtils::AddFileToFolder(path, "movies"));
     std::string movieSetsDir(URIUtils::AddFileToFolder(path, "moviesets"));
     std::string musicvideosDir(URIUtils::AddFileToFolder(path, "musicvideos"));
@@ -11368,8 +11430,10 @@ void CVideoDatabase::ImportFromXML(const std::string &path)
           filename += StringUtils::Format("_{}", info.GetYear());
         CFileItem artItem(item);
         artItem.SetPath(GetSafeFile(moviesDir, filename) + ".avi");
-        scanner.GetArtwork(&artItem, ContentType::MOVIES, useFolders, true, actorsDir);
+        scanner.GetArtwork(&artItem, ContentType::MOVIES, useFolders, true, actorsDir,
+                           useRemoteArt);
         item.SetArt(artItem.GetArt());
+        CopyActorThumbs(artItem, item);
         if (item.GetVideoInfoTag()->m_set.HasTitle())
         {
           std::string setPath = URIUtils::AddFileToFolderMatchingEncoding(
@@ -11409,7 +11473,6 @@ void CVideoDatabase::ImportFromXML(const std::string &path)
           if (tag->IsDefaultVideoVersion())
             SetDefaultVideoVersion(VideoDbContentType::MOVIES, lastMovieId, tag->m_iFileId);
         }
-        scanner.AddVideo(&item, nullptr, useFolders, true, nullptr, true, ContentType::MOVIES);
         current++;
       }
       else if (StringUtils::CompareNoCase(movie->Value(), MediaTypeMusicVideo, 10) == 0)
@@ -11425,8 +11488,10 @@ void CVideoDatabase::ImportFromXML(const std::string &path)
           filename += StringUtils::Format("_{}", info.GetYear());
         CFileItem artItem(item);
         artItem.SetPath(GetSafeFile(musicvideosDir, filename) + ".avi");
-        scanner.GetArtwork(&artItem, ContentType::MUSICVIDEOS, useFolders, true, actorsDir);
+        scanner.GetArtwork(&artItem, ContentType::MUSICVIDEOS, useFolders, true, actorsDir,
+                           useRemoteArt);
         item.SetArt(artItem.GetArt());
+        CopyActorThumbs(artItem, item);
         scanner.AddVideo(&item, nullptr, useFolders, true, nullptr, true, ContentType::MUSICVIDEOS);
         current++;
       }
@@ -11444,17 +11509,21 @@ void CVideoDatabase::ImportFromXML(const std::string &path)
         bool useFolders = info.m_basePath.empty() ? LookupByFolders(showItem.GetPath(), true) : false;
         CFileItem artItem(showItem);
         std::string artPath(GetSafeFile(tvshowsDir, info.m_strTitle));
+        URIUtils::AddSlashAtEnd(artPath);
         artItem.SetPath(artPath);
-        scanner.GetArtwork(&artItem, ContentType::TVSHOWS, useFolders, true, actorsDir);
+        scanner.GetArtwork(&artItem, ContentType::TVSHOWS, useFolders, true, actorsDir,
+                           useRemoteArt);
         showItem.SetArt(artItem.GetArt());
+        // Before AddVideo(), as that is what saves the show's cast
+        CopyActorThumbs(artItem, showItem);
         const int showID{static_cast<int>(scanner.AddVideo(&showItem, nullptr, useFolders, true,
                                                            nullptr, true, ContentType::TVSHOWS))};
         // season artwork
         KODI::ART::SeasonsArtwork seasonArt;
         artItem.GetVideoInfoTag()->m_strPath = artPath;
-        CVideoInfoScanner::GetSeasonThumbs(
-            *artItem.GetVideoInfoTag(), seasonArt, CVideoThumbLoader::GetArtTypes(MediaTypeSeason),
-            true, CVideoInfoScanner::UseRemoteArtWithLocalScraper::YES, &regexpCache);
+        CVideoInfoScanner::GetSeasonThumbs(*artItem.GetVideoInfoTag(), seasonArt,
+                                           CVideoThumbLoader::GetArtTypes(MediaTypeSeason), true,
+                                           useRemoteArt, &regexpCache);
         for (const auto& [seasonNumber, art] : seasonArt)
         {
           const int seasonID = AddSeason(showID, seasonNumber);
@@ -11473,8 +11542,10 @@ void CVideoDatabase::ImportFromXML(const std::string &path)
               StringUtils::Format("s{:02}e{:02}.avi", info2.m_iSeason, info2.m_iEpisode);
           CFileItem artItem2(item);
           artItem2.SetPath(GetSafeFile(artPath, filename));
-          scanner.GetArtwork(&artItem2, ContentType::TVSHOWS, useFolders, true, actorsDir);
+          scanner.GetArtwork(&artItem2, ContentType::TVSHOWS, useFolders, true, actorsDir,
+                             useRemoteArt);
           item.SetArt(artItem2.GetArt());
+          CopyActorThumbs(artItem2, item);
           scanner.AddVideo(&item, nullptr, false, false, showItem.GetVideoInfoTag(), true,
                            ContentType::TVSHOWS);
           episode = episode->NextSiblingElement("episodedetails");
@@ -12599,14 +12670,15 @@ bool CVideoDatabase::SetDefaultVideoVersion(VideoDbContentType itemType, int dbI
   if (path.empty())
     return false;
 
+  int idOldFile{-1};
+
   try
   {
     BeginTransaction();
 
     if (itemType == VideoDbContentType::MOVIES)
     {
-      const int idOldFile{
-          GetSingleValueInt(PrepareSQL("SELECT idFile FROM movie WHERE idMovie=%i", dbId))};
+      idOldFile = GetSingleValueInt(PrepareSQL("SELECT idFile FROM movie WHERE idMovie=%i", dbId));
 
       if (idOldFile != idFile)
       {
@@ -12627,6 +12699,16 @@ bool CVideoDatabase::SetDefaultVideoVersion(VideoDbContentType itemType, int dbI
     }
 
     CommitTransaction();
+
+    if (itemType == VideoDbContentType::MOVIES)
+    {
+      if (idOldFile == idFile)
+        CLog::LogF(LOGDEBUG, "Default version of movie id {} unchanged (file id {})", dbId, idFile);
+      else
+        CLog::LogF(LOGDEBUG, "Default version of movie id {} changed from file id {} to file id {}",
+                   dbId, idOldFile, idFile);
+    }
+
     return true;
   }
   catch (...)

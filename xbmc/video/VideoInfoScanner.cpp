@@ -62,6 +62,7 @@
 #include "video/dialogs/GUIDialogVideoManagerVersions.h"
 
 #include <algorithm>
+#include <map>
 #include <memory>
 #include <ranges>
 #include <set>
@@ -79,6 +80,23 @@ using KODI::UTILITY::CDigest;
 
 namespace
 {
+//! \brief The grouping of similar videos setting, for logging
+const char* SimilarVideoScanActionToStr(SimilarVideoScanAction action)
+{
+  switch (action)
+  {
+    using enum SimilarVideoScanAction;
+    case NONE:
+      return "off";
+    case ASK:
+      return "ask";
+    case AUTO:
+      return "automatic";
+    default:
+      return "unknown";
+  }
+}
+
 /*! \brief Retrieve the art type for an image from the given size.
  \param width the width of the image.
  \param height the height of the image.
@@ -166,6 +184,37 @@ void OnDirectoryScanned(const std::string& strDirectory)
   msg.SetStringParam(strDirectory);
   CServiceBroker::GetGUI()->GetWindowManager().SendThreadMessage(msg);
 }
+
+void CacheArtwork(const std::string& url, bool retrieveArtDuringScrape)
+{
+  if (url.empty())
+    return;
+
+  const auto& textureCache = CServiceBroker::GetTextureCache();
+  if (!retrieveArtDuringScrape)
+  {
+    textureCache->BackgroundCacheImage(url);
+    return;
+  }
+
+  bool needsRecaching{false};
+  if (!textureCache->CheckCachedImage(url, needsRecaching).empty() && !needsRecaching)
+    return; // already cached
+
+  // Fetch art or recache as needed
+  // This will be slow, but that is the point of the setting - to get the art during scraping
+  constexpr int MAX_SYNC_CACHE_ATTEMPTS = 3;
+  for (int attempt = 1; attempt <= MAX_SYNC_CACHE_ATTEMPTS; ++attempt)
+  {
+    if (!textureCache->CacheImage(url).empty())
+      return; // succeeded
+  }
+
+  // Synchronous fetch failed after several attempts (network timeout, etc.)
+  // Fall back to the resilient background path.
+  textureCache->BackgroundCacheImage(url);
+  CLog::LogF(LOGDEBUG, "Synchronous art caching for {} failed", url);
+}
 } // namespace
 
 namespace KODI::VIDEO
@@ -182,6 +231,8 @@ CVideoInfoScanner::CVideoInfoScanner()
   m_similarVideoAction = static_cast<SimilarVideoScanAction>(
       settings->GetInt(CSettings::SETTING_VIDEOLIBRARY_SIMILARVIDEOACTION));
   m_ignoreVideoExtras = settings->GetBool(CSettings::SETTING_VIDEOLIBRARY_IGNOREVIDEOEXTRAS);
+  m_artRetrievalTiming = static_cast<ArtRetrievalTiming>(
+      settings->GetInt(CSettings::SETTING_VIDEOLIBRARY_ARTRETRIEVALTIMING));
 }
 
 CVideoInfoScanner::~CVideoInfoScanner()
@@ -229,7 +280,8 @@ CVideoInfoScanner::~CVideoInfoScanner()
 
       m_bCanInterrupt = true;
 
-      CLog::Log(LOGINFO, "VideoInfoScanner: Starting scan ..");
+      CLog::Log(LOGINFO, "VideoInfoScanner: Starting scan .. (grouping of similar videos is {})",
+                SimilarVideoScanActionToStr(m_similarVideoAction));
       CServiceBroker::GetAnnouncementManager()->Announce(ANNOUNCEMENT::VideoLibrary,
                                                          "OnScanStarted");
 
@@ -420,6 +472,7 @@ CVideoInfoScanner::~CVideoInfoScanner()
     }
 
     std::string hash, dbHash;
+    bool listingHash = false; // hash came from GetPathHash over a fetched listing
     if (content == ContentType::MOVIES || content == ContentType::MUSICVIDEOS)
     {
       if (m_handle)
@@ -441,9 +494,35 @@ CVideoInfoScanner::~CVideoInfoScanner()
       { // need to fetch the folder
         CDirectory::GetDirectory(strDirectory, items, CServiceBroker::GetFileExtensionProvider().GetVideoExtensions(),
                                  DIR_FLAG_DEFAULTS);
-        // do not consider inner folders with .nomedia
-        erase_if(items, [](const std::shared_ptr<CFileItem>& item)
-                 { return item->IsFolder() && HasNoMedia(item->GetPath()); });
+
+        // mark subfolders whose stored fast hash matches the listing mtime digest;
+        // the disc structure probes in Stack() and the recursion loop (which also
+        // drops them from m_pathsToScan) skip marked items. Full listing hashes
+        // never match here, so folders containing subfolders are still visited.
+        std::vector<CRegExp> stackRegExps{m_advancedSettings->m_folderStackRegExps};
+        for (int i = items.Size() - 1; i >= 0; --i)
+        {
+          if (!items[i]->IsFolder())
+            continue;
+          // a marked folder-stack member (label like "cd1") stays a folder in
+          // Stack() and its stack cannot form; leave such folders unmarked
+          std::string label = StringUtils::ToLower(items[i]->GetLabel());
+          URIUtils::RemoveSlashAtEnd(label);
+          std::string dbh;
+          int64_t rawTime = items[i]->GetProperty(DIR_PROPERTY_STAT_MTIME).asInteger(0);
+          if (rawTime == 0)
+            rawTime = items[i]->GetProperty(DIR_PROPERTY_STAT_CTIME).asInteger(0);
+          if (m_advancedSettings->m_bVideoLibraryUseFastHash &&
+              std::none_of(stackRegExps.begin(), stackRegExps.end(),
+                           [&label](CRegExp& re) { return re.RegFind(label) != -1; }) &&
+              m_database.GetPathHash(items[i]->GetPath(), dbh) && !dbh.empty() &&
+              StringUtils::EqualsNoCase(rawTime != 0 ? GetFastHash(regexps, rawTime)
+                                                     : GetFastHash(items[i]->GetPath(), regexps),
+                                        dbh))
+            items[i]->SetProperty(PROPERTY_UNCHANGED, true);
+          else if (HasNoMedia(items[i]->GetPath()))
+            items.Remove(i);
+        }
         items.Stack();
 
         // force sorting consistency to avoid hash mismatch between platforms
@@ -451,7 +530,8 @@ CVideoInfoScanner::~CVideoInfoScanner()
         items.Sort(SortBy::FILE, SortOrder::ASCENDING, SortAttributeNone);
 
         // check whether to re-use previously computed fast hash
-        if (!CanFastHash(items, regexps) || fastHash.empty())
+        listingHash = !CanFastHash(items, regexps) || fastHash.empty();
+        if (listingHash)
           GetPathHash(items, hash);
         else
           hash = fastHash;
@@ -460,7 +540,7 @@ CVideoInfoScanner::~CVideoInfoScanner()
       if (StringUtils::EqualsNoCase(hash, dbHash))
       { // hash matches - skipping
         CLog::Log(LOGDEBUG, "VideoInfoScanner: Skipping dir '{}' due to no change{}",
-                  CURL::GetRedacted(strDirectory), !fastHash.empty() ? " (fasthash)" : "");
+                  CURL::GetRedacted(strDirectory), listingHash ? "" : " (fasthash)");
         bSkip = true;
       }
       else if (hash.empty())
@@ -534,6 +614,16 @@ CVideoInfoScanner::~CVideoInfoScanner()
       }
       else
       {
+        // an all-folder listing has nothing to directly import, so foundSomething
+        // is false here even when nothing changed; store the hash or GetPathHash
+        // output never matches dbHash and every scan repeats the full rescan.
+        // Only store a listing-hash, as an mtime-hash would match the fasthash
+        // gate before the listing is fetched, hiding content that never imported.
+        if ((content == ContentType::MOVIES || content == ContentType::MUSICVIDEOS) &&
+            listingHash && !URIUtils::IsArchive(CURL(strDirectory)) &&
+            std::all_of(items.begin(), items.end(),
+                        [](const auto& item) { return item->IsFolder(); }))
+          m_database.SetPathHash(strDirectory, hash);
         if (m_bClean)
           m_pathsToClean.insert(m_database.GetPathId(strDirectory));
         CLog::Log(LOGDEBUG, "VideoInfoScanner: No (new) information was found in dir {}",
@@ -573,11 +663,47 @@ CVideoInfoScanner::~CVideoInfoScanner()
         continue;
       }
 
+      // Disc rips are anchored in files/path several ways: BD subfolder rips
+      // under the raw BDMV/ row (older imports or failed playlist detection)
+      // or under a bluray:// playlist row (current imports); DVD rips under
+      // VIDEO_TS/; flat rips with the structure file directly in the movie
+      // folder. In every form the movie folder itself, the item the scanner
+      // lists, has no hashed row, so each parent rescan re-imports the movie
+      // from NFO. Store its fast hash here; GetMovieId resolves all anchor
+      // forms. ISOs hash normally as plain files and never reach this block.
+      if (content == ContentType::MOVIES && m_advancedSettings->m_bVideoLibraryUseFastHash &&
+          !URIUtils::IsPlugin(strDirectory) && !pItem->IsFolder() &&
+          !URIUtils::IsStack(pItem->GetPath()) && URIUtils::IsOpticalMediaFile(pItem->GetPath()))
+      {
+        std::string discFolder = URIUtils::RemoveDiscPath(pItem->GetPath());
+        URIUtils::AddSlashAtEnd(discFolder);
+        if (!URIUtils::PathEquals(discFolder, strDirectory, true))
+        {
+          int64_t rawTime = pItem->GetProperty(DIR_PROPERTY_STAT_MTIME).asInteger(0);
+          if (rawTime == 0)
+            rawTime = pItem->GetProperty(DIR_PROPERTY_STAT_CTIME).asInteger(0);
+          const std::string fh =
+              rawTime != 0 ? GetFastHash(regexps, rawTime) : GetFastHash(discFolder, regexps);
+          std::string dbh;
+          if (!fh.empty() &&
+              !(m_database.GetPathHash(discFolder, dbh) && StringUtils::EqualsNoCase(fh, dbh)) &&
+              m_database.HasMovieInfo(pItem->GetDynPath()))
+            m_database.SetPathHash(discFolder, fh);
+        }
+      }
+
       // if we have a directory item (non-playlist) we then recurse into that folder
       // do not recurse for tv shows - we have already looked recursively for episodes
       if (content != ContentType::TVSHOWS && settings.recurse > 0 && pItem->IsFolder() &&
           !pItem->IsParentFolder() && !PLAYLIST::IsPlayList(*pItem))
       {
+        if (pItem->GetProperty(PROPERTY_UNCHANGED).asBoolean())
+        {
+          CLog::Log(LOGDEBUG, "VideoInfoScanner: Skipping dir '{}' due to no change (fasthash)",
+                    CURL::GetRedacted(pItem->GetPath()));
+          m_pathsToScan.erase(pItem->GetPath());
+          continue;
+        }
         if (const auto [scanComplete, foundContentOnRecursion] = DoScan(pItem->GetPath());
             scanComplete == ScanComplete::Stopped)
         {
@@ -704,6 +830,9 @@ CVideoInfoScanner::~CVideoInfoScanner()
     for (int i = 0; i < items.Size(); ++i)
     {
       CFileItemPtr pItem = items[i];
+
+      if (pItem->IsFolder() && pItem->GetProperty(PROPERTY_UNCHANGED).asBoolean())
+        continue;
 
       // we do this since we may have a override per dir
       ScraperPtr info2 = m_database.GetScraperForPath(
@@ -989,6 +1118,35 @@ CVideoInfoScanner::~CVideoInfoScanner()
     return InfoRet::ADDED;
   }
 
+  namespace
+  {
+  // Populates CFileItemList items with every candidate (version) bluray playlist found for item (if any).
+  // item is updated in place to the first (main) playlist; any further items are additional playlists presumed to
+  // be other versions of the same movie (only populated when returned by CDiscDirectoryHelper when
+  // not SimilarVideoScanAction::NONE).
+  void ResolveBlurayPlaylist(CFileItem* item, CFileItemList& items)
+  {
+    if (::UTILS::DISCS::IsBlurayDiscImage(item->GetPath()) || URIUtils::IsBDFile(item->GetPath()))
+    {
+      if (CDiscDirectoryHelper::GetOrShowPlaylistSelection(*item, items, MenuDecision::SILENT) &&
+          !items.IsEmpty())
+        *item = *items[0];
+    }
+  }
+
+  // An edition extracted from the filename is applied only when an asset title hasn't been set yet (NFO wins).
+  void ApplyEdition(CFileItem* item, const std::string& editionFromFilename)
+  {
+    if (editionFromFilename.empty())
+      return;
+
+    // Creation of a tag if one doesn't exist yet is on purpose
+    CVideoInfoTag* tag{item->GetVideoInfoTag()};
+    if (tag && tag->GetAssetInfo().GetTitle().empty())
+      tag->GetAssetInfo().SetTitle(editionFromFilename);
+  }
+  } // unnamed namespace
+
   CInfoScanner::InfoRet CVideoInfoScanner::RetrieveInfoForMovie(CFileItem* pItem,
                                                                 bool bDirNames,
                                                                 ScraperPtr& info2,
@@ -1013,16 +1171,46 @@ CVideoInfoScanner::~CVideoInfoScanner()
     //! available filesystem characters. ex. "directors cut" in file name vs "Director's Cut"
     const std::string editionFromFilename{filenameAttributes.GetEdition()};
 
-    // An edition extracted from the filename is applied only when an asset title hasn't been set yet (NFO wins).
-    const auto applyEdition = [&editionFromFilename](CFileItem* item)
+    // Handle sets, filename-derived edition, bluray playlist(s) (if any) and add to the library
+    const auto HandleMovieSetAndVersions = [this, pItem, &info2, bDirNames, useLocal,
+                                            &editionFromFilename]() -> InfoRet
     {
-      if (editionFromFilename.empty())
-        return;
+      if (UpdateSetInTag(*pItem->GetVideoInfoTag()) && !AddSet(pItem->GetVideoInfoTag()->m_set))
+        return InfoRet::INFO_ERROR;
 
-      // Creation of a tag if one doesn't exist yet is on purpose
-      CVideoInfoTag* tag{item->GetVideoInfoTag()};
-      if (tag && tag->GetAssetInfo().GetTitle().empty())
-        tag->GetAssetInfo().SetTitle(editionFromFilename);
+      ApplyEdition(pItem, editionFromFilename);
+
+      // Determine bluray playlist(s) (if possible)
+      // Also populates streamdetails if playlist(s) found
+      CFileItemList blurayItems;
+      ResolveBlurayPlaylist(pItem, blurayItems);
+      if (!blurayItems.IsEmpty())
+        return AddBlurayPlaylistVersions(blurayItems, info2, bDirNames, useLocal);
+
+      const int movieDbId{static_cast<int>(AddVideo(pItem, info2, bDirNames, useLocal))};
+      if (movieDbId < 0)
+        return InfoRet::INFO_ERROR;
+
+      if ((m_similarVideoAction == SimilarVideoScanAction::ASK ||
+           m_similarVideoAction == SimilarVideoScanAction::AUTO))
+      {
+        [[maybe_unused]] const auto [result, targetMovieDbId] =
+            ProcessVideoVersion(VideoDbContentType::MOVIES, movieDbId);
+        switch (result)
+        {
+          case VersionConversionResult::SUCCESS:
+            return InfoRet::HAVE_ALREADY;
+          case VersionConversionResult::NOT_NEEDED:
+          case VersionConversionResult::CANCELLED:
+          case VersionConversionResult::NOT_ALLOWED:
+            return InfoRet::ADDED;
+          case VersionConversionResult::FAILED:
+            return InfoRet::INFO_ERROR;
+        }
+      }
+
+      // No version processing
+      return InfoRet::ADDED;
     };
 
     InfoType result = InfoType::NONE;
@@ -1037,6 +1225,7 @@ CVideoInfoScanner::~CVideoInfoScanner()
     {
       // Add the movie entry
       int movieId{-1};
+      bool mergedIntoExistingMovie{false};
       item.SetProperty("from_nfo", true);
 
       CVideoInfoTag* tag{item.GetVideoInfoTag()};
@@ -1050,6 +1239,7 @@ CVideoInfoScanner::~CVideoInfoScanner()
         {
           // Movie already exists
           movieId = items[0]->GetVideoInfoTag()->m_iDbId;
+          mergedIntoExistingMovie = true;
           CLog::LogF(LOGDEBUG,
                      "Movie '{}' already exists in the library as id {} - adding as version",
                      tag->GetTitle(), movieId);
@@ -1065,7 +1255,7 @@ CVideoInfoScanner::~CVideoInfoScanner()
       // Existing movie cannot be found or is not version - add it
       if (movieId < 0)
       {
-        applyEdition(&item);
+        ApplyEdition(&item, editionFromFilename);
 
         movieId = static_cast<int>(AddVideo(&item, info2, bDirNames, true));
         if (movieId < 0)
@@ -1109,7 +1299,7 @@ CVideoInfoScanner::~CVideoInfoScanner()
         m_database.SetDefaultVideoVersion(VideoDbContentType::MOVIES, movieId,
                                           defaultVersionFileId);
 
-      return InfoRet::ADDED;
+      return mergedIntoExistingMovie ? InfoRet::HAVE_ALREADY : InfoRet::ADDED;
     }
 
     // If no nfo then return here if movie already in library
@@ -1152,21 +1342,7 @@ CVideoInfoScanner::~CVideoInfoScanner()
                      (result == InfoType::COMBINED || result == InfoType::OVERRIDE) ? loader.get()
                                                                                     : nullptr,
                      pDlgProgress))
-      {
-        if (UpdateSetInTag(*pItem->GetVideoInfoTag()) && !AddSet(pItem->GetVideoInfoTag()->m_set))
-          return InfoRet::INFO_ERROR;
-
-        applyEdition(pItem);
-
-        const int dbId{static_cast<int>(AddVideo(pItem, info2, bDirNames, useLocal))};
-        if (dbId < 0)
-          return InfoRet::INFO_ERROR;
-        if ((m_similarVideoAction == SimilarVideoScanAction::ASK ||
-             m_similarVideoAction == SimilarVideoScanAction::AUTO) &&
-            ProcessVideoVersion(VideoDbContentType::MOVIES, dbId))
-          return InfoRet::HAVE_ALREADY;
-        return InfoRet::ADDED;
-      }
+        return HandleMovieSetAndVersions();
     }
 
     if (pURL && pURL->HasUrls())
@@ -1181,21 +1357,8 @@ CVideoInfoScanner::~CVideoInfoScanner()
                    (result == InfoType::COMBINED || result == InfoType::OVERRIDE) ? loader.get()
                                                                                   : nullptr,
                    pDlgProgress))
-    {
-      if (UpdateSetInTag(*pItem->GetVideoInfoTag()) && !AddSet(pItem->GetVideoInfoTag()->m_set))
-        return InfoRet::INFO_ERROR;
+      return HandleMovieSetAndVersions();
 
-      applyEdition(pItem);
-
-      const int dbId{static_cast<int>(AddVideo(pItem, info2, bDirNames, useLocal))};
-      if (dbId < 0)
-        return InfoRet::INFO_ERROR;
-      if ((m_similarVideoAction == SimilarVideoScanAction::ASK ||
-           m_similarVideoAction == SimilarVideoScanAction::AUTO) &&
-          ProcessVideoVersion(VideoDbContentType::MOVIES, dbId))
-        return InfoRet::HAVE_ALREADY;
-      return InfoRet::ADDED;
-    }
     //! @todo This is not strictly correct as we could fail to download information here or error, or be cancelled
     return InfoRet::NOT_FOUND;
   }
@@ -1329,6 +1492,9 @@ CVideoInfoScanner::~CVideoInfoScanner()
                         useLocal && !item->IsPlugin(), useRemoteArt, &m_regexpCache);
         for (const auto& [season, art] : seasonArt)
         {
+          for (const auto& url : art | std::views::values)
+            CacheArtwork(url, m_artRetrievalTiming == ArtRetrievalTiming::SYNCHRONOUS);
+
           const int seasonID{m_database.AddSeason(static_cast<int>(showID), season)};
           m_database.SetArtForItem(seasonID, MediaTypeSeason, art);
         }
@@ -1651,15 +1817,20 @@ CVideoInfoScanner::~CVideoInfoScanner()
 
     const ContentType content{
         !scraper || contentOverride != ContentType::NONE ? contentOverride : scraper->Content()};
-    const bool usingLocalScraper{scraper && scraper->ID() == "metadata.local"};
+    const bool usingLocalScraper{!scraper || scraper->ID() == "metadata.local"};
     const UseRemoteArtWithLocalScraper useRemoteArt{
         usingLocalScraper && m_advancedSettings->m_bNoRemoteArtWithLocalScraper
             ? UseRemoteArtWithLocalScraper::NO
             : UseRemoteArtWithLocalScraper::YES};
 
-    std::string path{pItem->GetPath()};
-    const int playlist{pItem->HasVideoInfoTag() ? pItem->GetVideoInfoTag()->m_iTrack : -1};
-    if (playlist > -1 && (::UTILS::DISCS::IsBlurayDiscImage(path) || URIUtils::IsBDFile(path)))
+    std::string path{pItem->GetDynPath()};
+    const int playlist{pItem->GetProperty("bluray_playlist").asInteger32(-1)};
+
+    // The versions loop in RetrieveInfoForMovie() reuses one item for every <movie> in the nfo, so
+    // the dynpath may still hold the previous version's playlist.
+    if (playlist > -1 &&
+        (::UTILS::DISCS::IsBlurayDiscImage(path) || URIUtils::IsBDFile(path) ||
+         (URIUtils::IsBlurayPath(path) && URIUtils::GetBlurayPlaylistFromPath(path) != playlist)))
     {
       path = URIUtils::GetBlurayPlaylistPath(path, playlist);
       pItem->SetDynPath(path);
@@ -1667,7 +1838,8 @@ CVideoInfoScanner::~CVideoInfoScanner()
 
     if (!libraryImport)
       GetArtwork(pItem, content, videoFolder, useLocal && !pItem->IsPlugin(),
-                 showInfo ? showInfo->m_strPath : "", useRemoteArt);
+                 showInfo ? URIUtils::AddFileToFolder(showInfo->m_strPath, ".actors") : "",
+                 useRemoteArt);
 
     // ensure the art map isn't completely empty by specifying an empty thumb
     KODI::ART::Artwork art = pItem->GetArt();
@@ -1691,18 +1863,6 @@ CVideoInfoScanner::~CVideoInfoScanner()
     {
       strTitle = StringUtils::Format("{} - {}x{} - {}", showInfo->m_strTitle,
                                      movieDetails.m_iSeason, movieDetails.m_iEpisode, strTitle);
-    }
-
-    // Determine bluray playlist (if possible)
-    // Also populates streamdetails
-    if (!libraryImport && !pItem->GetProperty("from_nfo").asBoolean(false) &&
-        (::UTILS::DISCS::IsBlurayDiscImage(path) || URIUtils::IsBDFile(path)))
-    {
-      if (CDiscDirectoryHelper::GetOrShowPlaylistSelection(*pItem, MenuDecision::SILENT))
-      {
-        path = pItem->GetDynPath();
-        pItem->GetVideoInfoTag()->SetFileNameAndPath(path);
-      }
     }
 
     if (CServiceBroker::GetSettingsComponent()->GetSettings()->GetBool(
@@ -1746,8 +1906,11 @@ CVideoInfoScanner::~CVideoInfoScanner()
                     });
 
       // Deal with 'Disc n' subdirectories
-      // Unless dealing with a full nfo in which case details are taken from there already
-      if (!pItem->GetProperty("from_nfo").asBoolean(false) && !pItem->IsStack())
+      // Unless dealing with a full nfo or a library import, in which case the title and set are
+      // taken from there already. Only occurs on first addition of the movie.
+      const bool newMovie{m_database.GetMovieId(path) < 0};
+      if (newMovie && !libraryImport && !pItem->GetProperty("from_nfo").asBoolean(false) &&
+          !pItem->IsStack())
       {
         const std::string discNum{CUtil::GetPartNumberFromPath(movieDetails.m_strFileNameAndPath)};
         if (!discNum.empty())
@@ -1829,8 +1992,13 @@ CVideoInfoScanner::~CVideoInfoScanner()
         KODI::ART::SeasonsArtwork seasonArt;
 
         if (!libraryImport)
+        {
           GetSeasonThumbs(movieDetails, seasonArt, CVideoThumbLoader::GetArtTypes(MediaTypeSeason),
                           useLocal && !pItem->IsPlugin(), useRemoteArt, &m_regexpCache);
+          for (const auto& seasonArtwork : seasonArt | std::views::values)
+            for (const auto& url : seasonArtwork | std::views::values)
+              CacheArtwork(url, m_artRetrievalTiming == ArtRetrievalTiming::SYNCHRONOUS);
+        }
 
         lResult = m_database.SetDetailsForTvShow(multipath, movieDetails, art, seasonArt);
         movieDetails.m_iDbId = lResult;
@@ -1932,6 +2100,10 @@ CVideoInfoScanner::~CVideoInfoScanner()
         infoTag.Reset();
       auto result = loader->Load(infoTag, false);
 
+      // A <playlist> nfo element identifies the disc playlist the info belongs to
+      if (const int playlist{loader->GetBlurayPlaylist()}; playlist > -1)
+        item.SetProperty("bluray_playlist", playlist);
+
       // keep some properties only if advancedsettings.xml says so
       if (!m_advancedSettings->m_bVideoLibraryImportWatchedState)
         infoTag.ResetPlayCount();
@@ -2019,7 +2191,8 @@ CVideoInfoScanner::~CVideoInfoScanner()
                                                   : ART::AdditionalIdentifiers::NONE);
         }
         else if (content == ContentType::MOVIE_VERSIONS ||
-                 (pItem->HasVideoVersions() && pItem->GetVideoInfoTag()->m_iTrack > -1))
+                 (pItem->HasVideoVersions() &&
+                  pItem->GetProperty("bluray_playlist").asInteger32(-1) > -1))
         {
           // Add playlist identifier only when there are multiple versions of the movie on the same disc
           path =
@@ -2099,10 +2272,8 @@ CVideoInfoScanner::~CVideoInfoScanner()
     }
 
     for (const auto& artType : artTypes)
-    {
       if (art.contains(artType))
-        CServiceBroker::GetTextureCache()->BackgroundCacheImage(art[artType]);
-    }
+        CacheArtwork(art.at(artType), m_artRetrievalTiming == ArtRetrievalTiming::SYNCHRONOUS);
 
     pItem->SetArt(art);
 
@@ -2110,8 +2281,16 @@ CVideoInfoScanner::~CVideoInfoScanner()
     std::string parentDir = URIUtils::GetParentPath(pItem->GetPath());
     if (CServiceBroker::GetSettingsComponent()->GetSettings()->GetBool(
             CSettings::SETTING_VIDEOLIBRARY_ACTORTHUMBS))
-      FetchActorThumbs(movieDetails.m_cast, actorArtPath.empty() ? parentDir : actorArtPath,
+    {
+      // .actors sits alongside the nfo, so for a disc folder it is in BDMV/VIDEO_TS
+      const std::string mediaDir{URIUtils::IsOpticalMediaFile(pItem->GetPath())
+                                     ? URIUtils::GetDirectory(pItem->GetPath())
+                                     : parentDir};
+      FetchActorThumbs(movieDetails.m_cast,
+                       actorArtPath.empty() ? URIUtils::AddFileToFolder(mediaDir, ".actors")
+                                            : actorArtPath,
                        useRemoteArt);
+    }
     if (bApplyToDir)
       ApplyThumbToFolder(parentDir, art["thumb"]);
   }
@@ -2366,6 +2545,11 @@ CVideoInfoScanner::~CVideoInfoScanner()
         if (scraperItem.GetVideoInfoTag()->m_iEpisode == -1)
           scraperItem.GetVideoInfoTag()->m_iEpisode = guide->iEpisode;
 
+        // Determine bluray playlist(s) (if possible)
+        // Also populates streamdetails if playlist(s) found
+        CFileItemList blurayItems;
+        ResolveBlurayPlaylist(&scraperItem, blurayItems);
+
         if (AddVideo(&scraperItem, info, file->isFolder, useLocal, &showInfo, false,
                      ContentType::TVSHOWS) < 0)
           return InfoRet::INFO_ERROR;
@@ -2413,6 +2597,11 @@ CVideoInfoScanner::~CVideoInfoScanner()
       }
 
       *pItem->GetVideoInfoTag() = movieDetails;
+
+      // A <playlist> nfo element identifies the disc playlist the info belongs to
+      if (const int playlist{loader ? loader->GetBlurayPlaylist() : -1}; playlist > -1)
+        pItem->SetProperty("bluray_playlist", playlist);
+
       return true;
     }
     return false; // no info found, or cancelled
@@ -2493,11 +2682,6 @@ CVideoInfoScanner::~CVideoInfoScanner()
   std::string CVideoInfoScanner::GetFastHash(const std::string &directory,
       const std::vector<std::string> &excludes) const
   {
-    CDigest digest{CDigest::Type::MD5};
-
-    if (!excludes.empty())
-      digest.Update(StringUtils::Join(excludes, "|"));
-
     struct __stat64 buffer;
     if (XFILE::CFile::Stat(directory, &buffer) == 0)
     {
@@ -2505,12 +2689,21 @@ CVideoInfoScanner::~CVideoInfoScanner()
       if (!time)
         time = buffer.st_ctime;
       if (time)
-      {
-        digest.Update((unsigned char *)&time, sizeof(time));
-        return digest.Finalize();
-      }
+        return GetFastHash(excludes, time);
     }
     return "";
+  }
+
+  std::string CVideoInfoScanner::GetFastHash(const std::vector<std::string>& excludes,
+                                             int64_t time) const
+  {
+    CDigest digest{CDigest::Type::MD5};
+
+    if (!excludes.empty())
+      digest.Update(StringUtils::Join(excludes, "|"));
+
+    digest.Update((unsigned char*)&time, sizeof(time));
+    return digest.Finalize();
   }
 
   std::string CVideoInfoScanner::GetRecursiveFastHash(const std::string &directory,
@@ -2629,47 +2822,51 @@ CVideoInfoScanner::~CVideoInfoScanner()
 
   void CVideoInfoScanner::FetchActorThumbs(
       std::vector<SActorInfo>& actors,
-      const std::string& strPath,
+      const std::string& actorsDir,
       UseRemoteArtWithLocalScraper useRemoteArt /* = YES */) const
   {
     CFileItemList items;
     // don't try to fetch anything local with plugin source
-    if (!URIUtils::IsPlugin(strPath))
+    if (!URIUtils::IsPlugin(actorsDir) && CDirectory::Exists(actorsDir))
+      CDirectory::GetDirectory(actorsDir, items, ".png|.jpg|.tbn",
+                               DIR_FLAG_NO_FILE_DIRS | DIR_FLAG_NO_FILE_INFO);
+
+    // Index the thumbs by filename (without extension)
+    std::map<std::string, std::string> thumbs;
+    for (const auto& item : items)
     {
-      std::string actorsDir = URIUtils::AddFileToFolder(strPath, ".actors");
-      if (CDirectory::Exists(actorsDir))
-        CDirectory::GetDirectory(actorsDir, items, ".png|.jpg|.tbn", DIR_FLAG_NO_FILE_DIRS |
-                                 DIR_FLAG_NO_FILE_INFO);
+      if (item->IsFolder())
+        continue;
+
+      std::string name{URIUtils::GetFileName(item->GetPath())};
+      URIUtils::RemoveExtension(name);
+      thumbs.try_emplace(std::move(name), item->GetPath());
     }
-    for (std::vector<SActorInfo>::iterator i = actors.begin(); i != actors.end(); ++i)
+
+    for (auto& actor : actors)
     {
-      if (i->thumb.empty())
+      if (actor.thumb.empty())
       {
-        std::string thumbFile = i->strName;
+        // Must match how the name is turned into a filename when exporting (see
+        // CVideoDatabase::GetSafeFile()), or an actor whose name contains a character that is not
+        // legal in a filename (ie. a trailing '.') can never be matched to their own exported thumb
+        std::string thumbFile = actor.strName;
         StringUtils::Replace(thumbFile, ' ', '_');
-        for (int j = 0; j < items.Size(); j++)
+        thumbFile = CUtil::MakeLegalFileName(std::move(thumbFile));
+        if (const auto thumb{thumbs.find(thumbFile)}; thumb != thumbs.end())
+          actor.thumb = thumb->second;
+        if (!actor.thumbUrl.GetFirstUrlByType().m_url.empty())
         {
-          std::string compare = URIUtils::GetFileName(items[j]->GetPath());
-          URIUtils::RemoveExtension(compare);
-          if (!items[j]->IsFolder() && compare == thumbFile)
-          {
-            i->thumb = items[j]->GetPath();
-            break;
-          }
-        }
-        if (!i->thumbUrl.GetFirstUrlByType().m_url.empty())
-        {
-          const std::string thumb{CScraperUrl::GetThumbUrl(i->thumbUrl.GetFirstUrlByType())};
+          const std::string thumb{CScraperUrl::GetThumbUrl(actor.thumbUrl.GetFirstUrlByType())};
           const bool notUsingThisRemoteArt{useRemoteArt == UseRemoteArtWithLocalScraper::NO &&
                                            URIUtils::IsRemote(thumb)};
-          if (i->thumb.empty() && !notUsingThisRemoteArt)
-            i->thumb = thumb;
+          if (actor.thumb.empty() && !notUsingThisRemoteArt)
+            actor.thumb = thumb;
           if (notUsingThisRemoteArt)
-            i->thumbUrl.Clear();
+            actor.thumbUrl.Clear();
         }
-        if (!i->thumb.empty())
-          CServiceBroker::GetTextureCache()->BackgroundCacheImage(i->thumb);
       }
+      CacheArtwork(actor.thumb, m_artRetrievalTiming == ArtRetrievalTiming::SYNCHRONOUS);
     }
   }
 
@@ -2798,9 +2995,73 @@ CVideoInfoScanner::~CVideoInfoScanner()
     return true;
   }
 
-  bool CVideoInfoScanner::ProcessVideoVersion(VideoDbContentType itemType, int dbId)
+  CInfoScanner::InfoRet CVideoInfoScanner::AddBlurayPlaylistVersions(
+      const CFileItemList& blurayItems, const ScraperPtr& scraper, bool bDirNames, bool useLocal)
   {
-    return CGUIDialogVideoManagerVersions::ProcessVideoVersion(itemType, dbId);
+    if (blurayItems.IsEmpty())
+    {
+      CLog::LogF(LOGDEBUG, "No bluray playlist versions to add for the movie");
+      return InfoRet::NOT_NEEDED;
+    }
+
+    bool added{false};
+    bool versioned{false};
+    int targetDbId{-1};
+    for (const auto& item : blurayItems)
+    {
+      const int newMovieDbId{static_cast<int>(
+          AddVideo(item.get(), scraper, bDirNames, useLocal, nullptr, false, ContentType::MOVIES))};
+      if (newMovieDbId < 0)
+      {
+        CLog::LogF(LOGERROR, "Failed to add bluray playlist '{}' for movie",
+                   CURL::GetRedacted(item->GetDynPath()));
+        continue;
+      }
+      added = true;
+
+      // Each playlist is added as a movie in its own right first, then merged as a version of the
+      // one before it. Nothing to merge into if versioning is turned off, so they stay separate
+      if (m_similarVideoAction != SimilarVideoScanAction::ASK &&
+          m_similarVideoAction != SimilarVideoScanAction::AUTO)
+        continue;
+
+      const auto [result, chosenTargetMovieDbId] =
+          ProcessVideoVersion(ContentToVideoDbType(ContentType::MOVIES), newMovieDbId, targetDbId);
+      if (result == VersionConversionResult::SUCCESS)
+      {
+        CLog::LogF(LOGDEBUG, "Added bluray playlist '{}' as a version of movie id {}",
+                   CURL::GetRedacted(item->GetDynPath()), chosenTargetMovieDbId);
+        targetDbId = chosenTargetMovieDbId;
+        versioned = true;
+      }
+      else if (result == VersionConversionResult::FAILED ||
+               result == VersionConversionResult::CANCELLED)
+      {
+        // Declined, or merging was not possible
+        if (m_database.DeleteMovie(newMovieDbId))
+          m_database.DeleteFile(item->GetVideoInfoTag()->m_iFileId);
+        CLog::LogF(LOGDEBUG,
+                   "Not adding bluray playlist '{}' as a version - declined or merge not possible",
+                   CURL::GetRedacted(item->GetDynPath()));
+      }
+    }
+
+    if (added && targetDbId >= 0)
+      RemovePartNumberFromTitle(targetDbId, VideoDbContentType::MOVIES, m_database);
+    return !added ? InfoRet::INFO_ERROR : (versioned ? InfoRet::HAVE_ALREADY : InfoRet::ADDED);
+  }
+
+  std::pair<VersionConversionResult, int> CVideoInfoScanner::ProcessVideoVersion(
+      VideoDbContentType itemType, int dbId, int targetDbId /* = -1 */)
+  {
+    return CGUIDialogVideoManagerVersions::ProcessVideoVersion(itemType, dbId, targetDbId);
+  }
+
+  void CVideoInfoScanner::RemovePartNumberFromTitle(int dbId,
+                                                    VideoDbContentType itemType,
+                                                    CVideoDatabase& db)
+  {
+    return CGUIDialogVideoManagerVersions::RemovePartNumberFromTitle(dbId, itemType, db);
   }
 
   void CVideoInfoScanner::SkipRelatedDirectories(std::string_view originalDirectory)

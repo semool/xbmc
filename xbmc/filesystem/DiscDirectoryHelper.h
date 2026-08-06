@@ -14,6 +14,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <set>
 #include <string>
@@ -30,17 +31,17 @@ using namespace std::chrono_literals;
 
 static constexpr int ALL_PLAYLISTS{-1};
 
-enum class GetTitle : int
+enum class GetTitle : uint8_t
 {
-  SINGLE = -1,
-  MAIN = -2,
-  EPISODES = -3,
-  ALL = -4
+  SINGLE,
+  MAIN,
+  EPISODES,
+  ALL
 };
 
 enum class SortTitles : uint8_t
 {
-  SORT_TITLES_NONE = 0,
+  SORT_TITLES_NONE,
   SORT_TITLES_EPISODE,
   SORT_TITLES_MOVIE
 };
@@ -138,6 +139,12 @@ static constexpr int DURATION_TOLERANCE_PERCENT{20};
 static constexpr std::chrono::milliseconds MIN_MOVIE_DURATION{30 * 60 * 1000}; // 30 minutes
 static constexpr int MAIN_TITLE_LENGTH_PERCENT{70};
 
+/*!
+ \brief Populates the stream details of item for the given title on the disc.
+ Supplied by the disc's directory implementation.
+ */
+using StreamDetailsProvider = std::function<void(unsigned int title, CFileItem& item)>;
+
 class CDiscDirectoryHelper
 {
   enum class IsSpecial : bool
@@ -173,6 +180,14 @@ class CDiscDirectoryHelper
 
 public:
   CDiscDirectoryHelper();
+
+  /*!
+   * \brief Construct a helper that can describe the streams of the titles it returns.
+   * \param getStreamDetails supplied by the disc's directory implementation. When empty the
+   *        returned items carry no stream details.
+   */
+  explicit CDiscDirectoryHelper(StreamDetailsProvider getStreamDetails);
+
   CDiscDirectoryHelper(const CDiscDirectoryHelper&) = delete;
   CDiscDirectoryHelper& operator=(const CDiscDirectoryHelper&) = delete;
 
@@ -260,11 +275,13 @@ public:
 
   /*!
    * \brief Either shows simple menu to select playlist, chooses main feature (movie/episode) playlists or returns if disc menu will be used later.
-   * \param item FileItem containing details of desired movie/episode. This is updated with the selected playlist.
+   * \param item FileItem containing details of desired movie/episode.
    * \param playback Determines if the simple dialog should be shown or the main title selected (if possible).
    * \return true if a playlist was selected or if the disc menu will be used later, false if the user cancelled.
    */
-  static bool GetOrShowPlaylistSelection(CFileItem& item, MenuDecision playback);
+  static bool GetOrShowPlaylistSelection(const CFileItem& item,
+                                         CFileItemList& items,
+                                         MenuDecision playback);
 
 protected:
   static bool GetDirectoryItems(const std::string& path,
@@ -315,6 +332,9 @@ private:
                                 const Episodes& episodesOnDisc,
                                 const PlaylistMap& playlists) const;
   bool FilterAllEpisodesPlaylists(std::vector<PlaylistInformation>& playlists, GetTitle job);
+
+  //! Describes the streams of a title, supplied by the disc's directory implementation
+  StreamDetailsProvider m_getStreamDetails;
 
   std::chrono::milliseconds m_minEpisodeDuration{0ms};
 
