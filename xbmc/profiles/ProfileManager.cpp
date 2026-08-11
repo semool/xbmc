@@ -467,14 +467,12 @@ void CProfileManager::LogOff()
   // Stop PVR services
   CServiceBroker::GetPVRManager().Stop();
 
-  networkManager.NetworkMessage(CNetworkBase::SERVICES_DOWN, 1);
+  // Only stop the services when the profile switch that follows will start them again.
+  if (m_currentProfile != MASTER_PROFILE_ID)
+  {
+    networkManager.NetworkMessage(CNetworkBase::SERVICES_DOWN, 1);
+  }
 
-  // Reset the database manager so the master profile's databases are
-  // re-initialized cleanly when the login screen is shown again.
-  CServiceBroker::GetDatabaseManager().Deinitialize();
-
-  // LoadMasterProfileForLogin calls LoadProfile, which closes and re-opens
-  // all databases at the correct point in the switch sequence.
   LoadMasterProfileForLogin();
 
   g_passwordManager.bMasterUser = false;
