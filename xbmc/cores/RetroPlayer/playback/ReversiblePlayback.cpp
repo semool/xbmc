@@ -277,10 +277,14 @@ bool CReversiblePlayback::LoadSavestate(const std::string& savestatePath)
   std::unique_ptr<ISavestate> savestate = CSavestateDatabase::AllocateSavestate();
   if (m_savestateDatabase->GetSavestate(savestatePath, *savestate))
   {
-    if (savestate->GetMemorySize() != memorySize)
+    if (!savestate->PrepareMemoryData(memorySize))
     {
-      CLog::Log(LOGERROR, "Invalid memory size, got {}, expected {}", memorySize,
-                savestate->GetMemorySize());
+      CLog::Log(LOGERROR, "RetroPlayer[SAVE]: Failed to prepare memory data");
+    }
+    else if (savestate->GetMemorySize() != memorySize)
+    {
+      CLog::Log(LOGERROR, "Invalid memory size, got {}, expected {}", savestate->GetMemorySize(),
+                memorySize);
     }
     else
     {
@@ -312,6 +316,7 @@ bool CReversiblePlayback::LoadSavestate(const std::string& savestatePath)
 void CReversiblePlayback::FrameEvent()
 {
   m_gameClient->RunFrame();
+  UpdateFrameRate();
 
   AddFrame();
 }
@@ -321,6 +326,7 @@ void CReversiblePlayback::RewindEvent()
   RewindFrames(1);
 
   m_gameClient->RunFrame();
+  UpdateFrameRate();
 }
 
 void CReversiblePlayback::EndEvent()
@@ -342,6 +348,15 @@ void CReversiblePlayback::AddFrame()
   }
 
   m_totalFrameCount++;
+}
+
+void CReversiblePlayback::UpdateFrameRate()
+{
+  const double previousFrameRate = m_gameLoop.FPS();
+  m_gameLoop.SetFrameRate(m_gameClient->GetFrameRate());
+
+  if (m_gameLoop.FPS() != previousFrameRate)
+    UpdateMemoryStream();
 }
 
 void CReversiblePlayback::RewindFrames(uint64_t frames)

@@ -41,6 +41,7 @@
 #include "utils/log.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <iterator>
 #include <memory>
@@ -173,6 +174,8 @@ bool CGameClient::Initialize(void)
   m_ifc.game->toKodi->kodiInstance = this;
   m_ifc.game->toKodi->EnableHardwareRendering = cb_enable_hardware_rendering;
   m_ifc.game->toKodi->CloseGame = cb_close_game;
+  m_ifc.game->toKodi->GetPlaybackSpeed = cb_get_playback_speed;
+  m_ifc.game->toKodi->SetGameTiming = cb_set_game_timing;
   m_ifc.game->toKodi->OpenStream = cb_open_stream;
   m_ifc.game->toKodi->GetStreamBuffer = cb_get_stream_buffer;
   m_ifc.game->toKodi->AddStreamData = cb_add_stream_data;
@@ -549,6 +552,17 @@ void CGameClient::RunFrame()
     try
     {
       LogError(m_ifc.game->toAddon->RunFrame(m_ifc.game), "RunFrame()");
+
+      // A client using the asynchronous audio interface produces no audio of
+      // its own accord: it waits to be asked, once per frame, and writes what
+      // it has from this thread. One that is never asked is silent, and since
+      // the frame rate is paced against the audio it delivers, it also runs as
+      // fast as the machine allows. Clients on the ordinary synchronous path
+      // answer this with GAME_ERROR_NOT_IMPLEMENTED and are unaffected.
+      const GAME_ERROR audioError = m_ifc.game->toAddon->AudioAvailable(m_ifc.game);
+      if (audioError != GAME_ERROR_NO_ERROR && audioError != GAME_ERROR_NOT_IMPLEMENTED)
+        LogError(audioError, "AudioAvailable()");
+
       m_hasFrameRun = true;
     }
     catch (...)
@@ -690,6 +704,34 @@ void CGameClient::cb_close_game(KODI_HANDLE kodiInstance)
 {
   CServiceBroker::GetAppMessenger()->PostMsg(TMSG_GUI_ACTION, WINDOW_INVALID, -1,
                                              static_cast<void*>(new CAction(ACTION_STOP)));
+}
+
+double CGameClient::cb_get_playback_speed(KODI_HANDLE kodiInstance)
+{
+  CGameClient* gameClient = static_cast<CGameClient*>(kodiInstance);
+  if (!gameClient)
+    return 0.0;
+
+  return gameClient->m_playbackSpeed;
+}
+
+void CGameClient::cb_set_game_timing(KODI_HANDLE kodiInstance, const game_system_timing* timingInfo)
+{
+  CGameClient* gameClient = static_cast<CGameClient*>(kodiInstance);
+  if (gameClient == nullptr || timingInfo == nullptr)
+    return;
+
+  if (!std::isfinite(timingInfo->fps) || timingInfo->fps <= 0.0 ||
+      !std::isfinite(timingInfo->sample_rate) || timingInfo->sample_rate <= 0.0)
+  {
+    CLog::Log(LOGERROR, "GAME: Invalid timing info: FPS = {:f}, sample rate = {:f}",
+              timingInfo->fps, timingInfo->sample_rate);
+    return;
+  }
+
+  gameClient->m_framerate = timingInfo->fps;
+  gameClient->m_samplerate = timingInfo->sample_rate;
+  gameClient->Streams().SetGameTiming(*timingInfo);
 }
 
 KODI_GAME_STREAM_HANDLE CGameClient::cb_open_stream(KODI_HANDLE kodiInstance,

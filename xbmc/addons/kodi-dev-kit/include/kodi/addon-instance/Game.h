@@ -408,6 +408,51 @@ public:
   //----------------------------------------------------------------------------
 
   //============================================================================
+  /// @brief **Callback to Kodi Function**\n
+  /// Get the speed the game is being played back at
+  ///
+  /// @return The speed as a multiple of normal speed
+  ///
+  /// The value is the same one Kodi shows the user, so it follows the player's
+  /// fast-forward and rewind semantics:
+  ///
+  ///   - `1.0` is normal speed
+  ///   - `0.0` is paused
+  ///   - greater than `1.0` is fast-forward
+  ///   - between `0.0` and `1.0` is slow motion
+  ///   - less than `0.0` is rewind
+  ///
+  /// Rewind is driven by Kodi replaying saved states, so a client is run
+  /// forwards even while the speed is negative. A client that changes its
+  /// behaviour with the speed should read the sign as "the user is going
+  /// backwards", not as a direction to run in.
+  ///
+  /// @remarks Only called from the add-on itself
+  ///
+  double GetPlaybackSpeed()
+  {
+    return m_instanceData->toKodi->GetPlaybackSpeed(m_instanceData->toKodi->kodiInstance);
+  }
+  //----------------------------------------------------------------------------
+
+  //============================================================================
+  /// @brief **Callback to Kodi Function**\n
+  /// Update the video and audio timing of the running game
+  ///
+  /// @param[in] timingInfo The new video frame rate and audio sample rate
+  ///
+  /// This updates timing reported by the add-on after gameplay has started.
+  /// Add-ons should call this when the game changes its timing dynamically.
+  ///
+  /// @remarks Only called from the add-on itself
+  ///
+  void SetGameTiming(const game_system_timing& timingInfo)
+  {
+    m_instanceData->toKodi->SetGameTiming(m_instanceData->toKodi->kodiInstance, &timingInfo);
+  }
+  //----------------------------------------------------------------------------
+
+  //============================================================================
   /// @defgroup cpp_kodi_addon_game_Operation_CStream Class: CStream
   /// @ingroup cpp_kodi_addon_game_Operation
   /// @brief @cpp_class{ kodi::addon::CInstanceGame::CStream }
@@ -632,7 +677,41 @@ public:
   //--==----==----==----==----==----==----==----==----==----==----==----==----==--
 
   //============================================================================
-  /// @defgroup cpp_kodi_addon_game_InputOperations 4. Input operations
+  ///
+  /// @defgroup cpp_kodi_addon_game_Audio 4. Audio operations
+  /// @ingroup cpp_kodi_addon_game
+  /// @brief **Audio operations**
+  ///
+  ///---------------------------------------------------------------------------
+  ///
+  /// **Audio operation parts in interface:**\n
+  /// Copy this to your project and extend with your parts or leave functions
+  /// complete away where not used or supported.
+  ///
+  /// @copydetails cpp_kodi_addon_game_Audio_header_addon_auto_check
+  /// @copydetails cpp_kodi_addon_game_Audio_source_addon_auto_check
+  ///
+  ///@{
+
+  //==========================================================================
+  /// @brief Tell the client the frontend is ready for audio
+  ///
+  /// Only implemented by clients that asked for the asynchronous audio
+  /// interface. Such a client produces no audio of its own accord: it waits to
+  /// be asked, then writes what it has through AddStreamData() on the thread
+  /// this was called from.
+  ///
+  /// @return The error, or GAME_ERROR_NO_ERROR if audio was handled
+  ///
+  virtual GAME_ERROR AudioAvailable() { return GAME_ERROR_NOT_IMPLEMENTED; }
+  //--------------------------------------------------------------------------
+
+  ///@}
+
+  //--==----==----==----==----==----==----==----==----==----==----==----==----==--
+
+  //============================================================================
+  /// @defgroup cpp_kodi_addon_game_InputOperations 5. Input operations
   /// @ingroup cpp_kodi_addon_game
   /// @brief **Input operations**
   ///
@@ -808,7 +887,7 @@ public:
   //--==----==----==----==----==----==----==----==----==----==----==----==----==--
 
   //============================================================================
-  /// @defgroup cpp_kodi_addon_game_SerializationOperations 5. Serialization operations
+  /// @defgroup cpp_kodi_addon_game_SerializationOperations 6. Serialization operations
   /// @ingroup cpp_kodi_addon_game
   /// @brief **Serialization operations**
   ///
@@ -861,7 +940,7 @@ public:
   //--==----==----==----==----==----==----==----==----==----==----==----==----==--
 
   //============================================================================
-  /// @defgroup cpp_kodi_addon_game_CheatOperations 6. Cheat operations
+  /// @defgroup cpp_kodi_addon_game_CheatOperations 7. Cheat operations
   /// @ingroup cpp_kodi_addon_game
   /// @brief **Cheat operations**
   ///
@@ -1080,7 +1159,7 @@ public:
   //--==----==----==----==----==----==----==----==----==----==----==----==----==--
 
   //============================================================================
-  /// @defgroup cpp_kodi_addon_game_DiscOperations 5. Disc operations
+  /// @defgroup cpp_kodi_addon_game_DiscOperations 8. Disc operations
   /// @ingroup cpp_kodi_addon_game
   /// @brief **Disc operations**
   ///
@@ -1243,6 +1322,8 @@ private:
     instance->game->toAddon->HwContextReset = ADDON_HwContextReset;
     instance->game->toAddon->HwContextDestroy = ADDON_HwContextDestroy;
 
+    instance->game->toAddon->AudioAvailable = ADDON_AudioAvailable;
+
     instance->game->toAddon->HasFeature = ADDON_HasFeature;
     instance->game->toAddon->GetTopology = ADDON_GetTopology;
     instance->game->toAddon->FreeTopology = ADDON_FreeTopology;
@@ -1360,6 +1441,13 @@ private:
   inline static GAME_ERROR ADDON_HwContextDestroy(const AddonInstance_Game* instance)
   {
     return static_cast<CInstanceGame*>(instance->toAddon->addonInstance)->HwContextDestroy();
+  }
+
+  // --- Audio operations --------------------------------------------------------
+
+  inline static GAME_ERROR ADDON_AudioAvailable(const AddonInstance_Game* instance)
+  {
+    return static_cast<CInstanceGame*>(instance->toAddon->addonInstance)->AudioAvailable();
   }
 
   // --- Input operations --------------------------------------------------------

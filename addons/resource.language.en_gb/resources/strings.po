@@ -14197,7 +14197,9 @@ msgstr ""
 
 #. Value for setting with label #170 "Player / Videos / Adjust display refresh rate"
 #. Value for setting with label #36098 "System / Display / Use 10 bit for SDR"
+#. Value for setting with label #36057 "Send volume commands over CEC"
 #: system/settings/settings.xml
+#: system/peripherals.xml
 msgctxt "#20422"
 msgid "Always"
 msgstr ""
@@ -19421,7 +19423,15 @@ msgctxt "#35280"
 msgid "Select disc"
 msgstr ""
 
-#empty strings from id 35281 to 35504
+#empty strings from id 35281 to 35297
+
+#. Error message shown when trying to load a compressed savestate in an unsupported version of Kodi
+#: xbmc/games/dialogs/osd/DialogInGameSaves.cpp
+msgctxt "#35298"
+msgid "This savestate is compressed and can't be loaded by this version of Kodi."
+msgstr ""
+
+#empty strings from id 35299 to 35504
 
 #. connection state "host unreachable"
 #: xbmc/pvr/addons/PVRClients.cpp
@@ -19453,7 +19463,20 @@ msgctxt "#35509"
 msgid "Connecting to backend."
 msgstr ""
 
-#empty strings from id 35510 to 35999
+#. Context menu item, and heading of the dialog it opens, for choosing the
+#. emulator a game or a folder of games is opened with
+#: xbmc/games/windows/GUIWindowGames.cpp
+msgctxt "#35510"
+msgid "Default emulator"
+msgstr ""
+
+#. Marks the emulator already set as the default in the list of emulators
+#: xbmc/games/GameUtils.cpp
+msgctxt "#35511"
+msgid "Current"
+msgstr ""
+
+#empty strings from id 35512 to 35999
 
 #: xbmc/peripherals/devices/PeripheralCecAdapter.cpp
 msgctxt "#36000"
@@ -19758,7 +19781,19 @@ msgctxt "#36056"
 msgid "Unless media is playing"
 msgstr ""
 
-#empty strings from id 36057 to 36095
+#. Label of CEC setting volume_control: whether Kodi's volume keys adjust the volume of the amplifier or TV over CEC instead of Kodi's own mixer
+#: system/peripherals.xml
+msgctxt "#36057"
+msgid "Send volume commands over CEC"
+msgstr ""
+
+#. Item list value of setting with label #36057 "Send volume commands over CEC": send them to an amplifier, or to a TV that reports CEC 2.0
+#: system/peripherals.xml
+msgctxt "#36058"
+msgid "Automatic"
+msgstr ""
+
+#empty strings from id 36059 to 36095
 
 #. Label of setting "System / Display / Use system HDR/SDR brightness balance"
 #: system/settings/settings.xml
