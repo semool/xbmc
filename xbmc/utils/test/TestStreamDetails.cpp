@@ -6,7 +6,9 @@
  *  See LICENSES/README.md for more information.
  */
 
+#include "utils/LanguageTag.h"
 #include "utils/StreamDetails.h"
+#include "utils/Variant.h"
 
 #include <string>
 #include <tuple>
@@ -14,6 +16,8 @@
 #include <vector>
 
 #include <gtest/gtest.h>
+
+using KODI::UTILS::CLanguageTag;
 
 TEST(TestStreamDetails, General)
 {
@@ -850,4 +854,181 @@ TEST(TestStreamDetails, FirstAudio_UnknownCodecAndChannelsArePassedThrough)
   EXPECT_EQ("", details.GetFirstAudioLanguage());
   EXPECT_EQ("", details.GetFirstAudioCodec());
   EXPECT_EQ(0, details.GetFirstAudioChannels());
+}
+
+TEST(TestStreamDetails, Flags_CopiedFromStreamInfo)
+{
+  // The scanner and the bluray parser both hand over a StreamInfo with the flags
+  // already set; the detail must keep them rather than drop them on the floor.
+  AudioStreamInfo audioInfo;
+  audioInfo.language = CLanguageTag::Parse("eng");
+  audioInfo.channels = 6;
+  audioInfo.flags =
+      static_cast<StreamFlags>(StreamFlags::FLAG_DEFAULT | StreamFlags::FLAG_ORIGINAL);
+
+  SubtitleStreamInfo subtitleInfo;
+  subtitleInfo.language = CLanguageTag::Parse("eng");
+  subtitleInfo.flags = StreamFlags::FLAG_FORCED;
+
+  CStreamDetails details;
+  details.AddStream(new CStreamDetailAudio(audioInfo, CStreamDetail::MEDIA));
+  details.AddStream(new CStreamDetailSubtitle(subtitleInfo, CStreamDetail::MEDIA));
+  details.DetermineBestStreams();
+
+  EXPECT_EQ(StreamFlags::FLAG_DEFAULT | StreamFlags::FLAG_ORIGINAL, details.GetAudioFlags(1));
+  EXPECT_EQ(StreamFlags::FLAG_FORCED, details.GetSubtitleFlags(1));
+}
+
+TEST(TestStreamDetails, Flags_DefaultToNoneAndAbsentStreamReportsNone)
+{
+  // Details that predate the flags column read back with no flags set, which must
+  // look the same as a stream that genuinely has none.
+  const CStreamDetails empty;
+  EXPECT_EQ(StreamFlags::FLAG_NONE, empty.GetAudioFlags(1));
+  EXPECT_EQ(StreamFlags::FLAG_NONE, empty.GetSubtitleFlags(1));
+
+  CStreamDetails details;
+  details.AddStream(new CStreamDetailAudio());
+  details.AddStream(new CStreamDetailSubtitle());
+  details.DetermineBestStreams();
+
+  EXPECT_EQ(StreamFlags::FLAG_NONE, details.GetAudioFlags(1));
+  EXPECT_EQ(StreamFlags::FLAG_NONE, details.GetSubtitleFlags(1));
+}
+
+TEST(TestStreamDetails, Flags_SurviveCopy)
+{
+  AudioStreamInfo audioInfo;
+  audioInfo.flags = StreamFlags::FLAG_VISUAL_IMPAIRED;
+
+  SubtitleStreamInfo subtitleInfo;
+  subtitleInfo.flags = StreamFlags::FLAG_HEARING_IMPAIRED;
+
+  CStreamDetails details;
+  details.AddStream(new CStreamDetailAudio(audioInfo, CStreamDetail::MEDIA));
+  details.AddStream(new CStreamDetailSubtitle(subtitleInfo, CStreamDetail::MEDIA));
+  details.DetermineBestStreams();
+
+  const CStreamDetails copy{details};
+  EXPECT_EQ(StreamFlags::FLAG_VISUAL_IMPAIRED, copy.GetAudioFlags(1));
+  EXPECT_EQ(StreamFlags::FLAG_HEARING_IMPAIRED, copy.GetSubtitleFlags(1));
+
+  // CStreamDetailSubtitle has its own operator=, which must carry the flags too.
+  CStreamDetailSubtitle subtitle;
+  subtitle.m_flags = StreamFlags::FLAG_FORCED;
+  CStreamDetailSubtitle subtitleCopy;
+  subtitleCopy = subtitle;
+  EXPECT_EQ(StreamFlags::FLAG_FORCED, subtitleCopy.m_flags);
+}
+
+TEST(TestStreamDetails, Flags_ParticipateInEquality)
+{
+  // SaveFileStateJob only writes stream details back to the database when the
+  // player's details differ from the stored ones, so a flags-only difference has
+  // to register as a difference. Otherwise flags are never backfilled for items
+  // scanned before the flags column existed.
+  AudioStreamInfo audioInfo;
+  audioInfo.codecName = "dts";
+  audioInfo.language = CLanguageTag::Parse("eng");
+  audioInfo.channels = 6;
+
+  SubtitleStreamInfo subtitleInfo;
+  subtitleInfo.language = CLanguageTag::Parse("eng");
+
+  const auto makeDetails = [&](StreamFlags audioFlags, StreamFlags subtitleFlags)
+  {
+    AudioStreamInfo audio{audioInfo};
+    audio.flags = audioFlags;
+    SubtitleStreamInfo subtitle{subtitleInfo};
+    subtitle.flags = subtitleFlags;
+
+    CStreamDetails details;
+    details.AddStream(new CStreamDetailAudio(audio, CStreamDetail::MEDIA));
+    details.AddStream(new CStreamDetailSubtitle(subtitle, CStreamDetail::MEDIA));
+    details.DetermineBestStreams();
+    return details;
+  };
+
+  const CStreamDetails flagless = makeDetails(StreamFlags::FLAG_NONE, StreamFlags::FLAG_NONE);
+
+  EXPECT_NE(flagless, makeDetails(StreamFlags::FLAG_DEFAULT, StreamFlags::FLAG_NONE));
+  EXPECT_NE(flagless, makeDetails(StreamFlags::FLAG_NONE, StreamFlags::FLAG_FORCED));
+  EXPECT_EQ(flagless, makeDetails(StreamFlags::FLAG_NONE, StreamFlags::FLAG_NONE));
+}
+
+TEST(TestStreamDetails, StreamFlagNames_EveryFlagRoundTrips)
+{
+  // A name missing from the table would be silently dropped on export, so the table has to
+  // cover every StreamFlags bit and each name has to map back to the flag it came from.
+  StreamFlags all{StreamFlags::FLAG_NONE};
+  for (const auto& [flag, name] : CStreamDetails::STREAM_FLAG_NAMES)
+  {
+    EXPECT_EQ(flag, CStreamDetails::StreamFlagFromName(name)) << "name: " << name;
+    all = static_cast<StreamFlags>(all | flag);
+  }
+
+  EXPECT_EQ(CStreamDetails::STREAM_FLAG_NAMES.size(),
+            CStreamDetails::StreamFlagsToNames(all).size());
+  EXPECT_TRUE(CStreamDetails::StreamFlagsToNames(StreamFlags::FLAG_NONE).empty());
+}
+
+TEST(TestStreamDetails, StreamFlagNames_UnknownAndUntidyNames)
+{
+  // NFOs are hand-edited, so leading/trailing space and casing must not matter, and a name
+  // from a newer Kodi that this build doesn't know must be ignored rather than misread.
+  EXPECT_EQ(StreamFlags::FLAG_DEFAULT, CStreamDetails::StreamFlagFromName("  DeFaUlT  "));
+  EXPECT_EQ(StreamFlags::FLAG_NONE, CStreamDetails::StreamFlagFromName("notaflag"));
+  EXPECT_EQ(StreamFlags::FLAG_NONE, CStreamDetails::StreamFlagFromName(""));
+}
+
+TEST(TestStreamDetails, StreamFlagNames_ReportedAlphabetically)
+{
+  // Names come out sorted regardless of the bit order they were set in, so an exported NFO
+  // is stable and two items with the same flags produce byte-identical output.
+  const std::vector<std::string> names =
+      CStreamDetails::StreamFlagsToNames(static_cast<StreamFlags>(
+          StreamFlags::FLAG_ORIGINAL | StreamFlags::FLAG_DEFAULT | StreamFlags::FLAG_FORCED));
+
+  EXPECT_EQ(std::vector<std::string>({"default", "forced", "original"}), names);
+
+  const std::vector<std::string> all = CStreamDetails::StreamFlagsToNames(
+      static_cast<StreamFlags>(StreamFlags::FLAG_WEBVTT_DATA_PACKETS |
+                               StreamFlags::FLAG_HEARING_IMPAIRED | StreamFlags::FLAG_COMMENT));
+
+  EXPECT_EQ(std::vector<std::string>({"comment", "hearingimpaired", "webvttdatapackets"}), all);
+}
+
+// The classes store ISO 639-2/B, because the streamdetails table is filtered by smart playlist
+// SQL, but JSON-RPC is served BCP 47. Serialize is where that widening happens.
+TEST(TestStreamDetails, SerializeWidensLanguageToBcp47)
+{
+  CStreamDetailAudio audio;
+  CStreamDetailSubtitle subtitle;
+  CStreamDetailVideo video;
+
+  CVariant value;
+
+  // BCP 47 prefers the alpha-2 code where the language has one
+  audio.m_strLanguage = "eng";
+  audio.Serialize(value);
+  EXPECT_EQ(value["language"].asString(), "en");
+
+  // A language whose B and T forms differ still resolves to its alpha-2
+  audio.m_strLanguage = "chi";
+  audio.Serialize(value);
+  EXPECT_EQ(value["language"].asString(), "zh");
+
+  // One with no alpha-2 keeps its three letter form, so length cannot tell the notations apart
+  subtitle.m_strLanguage = "ady";
+  subtitle.Serialize(value);
+  EXPECT_EQ(value["language"].asString(), "ady");
+
+  // Anything the standards do not know is passed through rather than dropped
+  video.m_strLanguage = "not a language";
+  video.Serialize(value);
+  EXPECT_EQ(value["language"].asString(), "not a language");
+
+  subtitle.m_strLanguage = "";
+  subtitle.Serialize(value);
+  EXPECT_EQ(value["language"].asString(), "");
 }
