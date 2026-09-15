@@ -163,9 +163,18 @@ COverlayTextureGLES::COverlayTextureGLES(const CDVDOverlayImage& o, CRect& rSour
   }
   else
   {
+    std::vector<uint32_t> convertedPalette;
+    const std::vector<uint32_t>* paletteOverride = nullptr;
+    if (OVERLAY::ShouldConvertPQPaletteToSRGB(o.m_isHDROverlay))
+    {
+      convertedPalette = o.palette;
+      OVERLAY::ConvertPQPaletteToSRGB(convertedPalette);
+      paletteOverride = &convertedPalette;
+    }
+
     std::vector<uint32_t> rgba(o.width * o.height);
     m_pma = !!USE_PREMULTIPLIED_ALPHA;
-    convert_rgba(o, m_pma, rgba);
+    convert_rgba(o, m_pma, rgba, paletteOverride);
 
     // the direct back-buffer draw in Render bypasses the composite's
     // limited-range encode, so apply it to the pixels here
@@ -396,6 +405,7 @@ void COverlayGlyphGLES::Render(SRenderState& state)
 
   CRenderSystemGLES* renderSystem =
       dynamic_cast<CRenderSystemGLES*>(CServiceBroker::GetRenderSystem());
+
   renderSystem->EnableGUIShader(ShaderMethodGLES::SM_FONTS);
   GLint posLoc = renderSystem->GUIShaderGetPos();
   GLint colLoc = renderSystem->GUIShaderGetCol();
