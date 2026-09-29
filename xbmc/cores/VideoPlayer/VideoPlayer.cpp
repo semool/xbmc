@@ -36,6 +36,7 @@
 #include "cores/DataCacheCore.h"
 #include "cores/EdlEdit.h"
 #include "cores/FFmpeg.h"
+#include "cores/VideoPlayer/Interface/InputStreamConstants.h"
 #include "cores/VideoPlayer/Process/ProcessInfo.h"
 #include "cores/VideoPlayer/VideoRenderers/RenderManager.h"
 #include "guilib/GUIComponent.h"
@@ -129,7 +130,9 @@ public:
     m_isPrefOriginal = StringUtils::EqualsNoCase(subLangSetting, LANGINFO::subLanguageOriginal);
     m_isPrefForced = StringUtils::EqualsNoCase(subLangSetting, LANGINFO::subLanguageForcedOnly);
     m_isPrefHearingImp = settings->GetBool(CSettings::SETTING_ACCESSIBILITY_SUBHEARING);
-    m_hideSameAudioLang = settings->GetBool(CSettings::SETTING_SUBTITLES_HIDESAMEAUDIOLANGUAGE);
+    // The setting keeps its value while disabled for none and forced_only
+    m_hideSameAudioLang = !m_isSubNone && !m_isPrefForced &&
+                          settings->GetBool(CSettings::SETTING_SUBTITLES_HIDESAMEAUDIOLANGUAGE);
 
     // Prefer the subtitle language setting; none, original and forced_only name no language, so
     // fall back to the audio setting, and default, original and mediadefault name none either,
@@ -151,6 +154,24 @@ public:
     return language.Matches(m_subLang);
   }
 
+  // \brief Whether a stream is in the language of the audio being played. Both languages must be
+  //        declared, a stream that states none is never assumed to match.
+  bool MatchesPlayedAudioLanguage(const CLanguageTag& language) const
+  {
+    return IsKnownLanguage(m_playedAudioLang) && IsKnownLanguage(language) &&
+           language.Matches(m_playedAudioLang);
+  }
+
+  // \brief Whether a stream is a forced one that takes the place of the subtitles hidden for being
+  //        in the audio language, which is also the language the settings ask for
+  bool IsForcedForHiddenAudioLanguage(const SelectionStream& ss) const
+  {
+    return m_hideSameAudioLang && (ss.flags & FLAG_FORCED) &&
+           MatchesPlayedAudioLanguage(ss.language) && MatchesSubtitleLanguage(ss.language);
+  }
+
+  // \brief Whether subtitles in the audio language are hidden
+  bool HidesSameAudioLanguage() const { return m_hideSameAudioLang; }
   // \brief Whether the subtitle language setting is "original"
   bool IsPreferredOriginal() const { return m_isPrefOriginal; }
   // \brief Whether the subtitle language setting is "forced_only"
@@ -179,11 +200,12 @@ public:
     const bool isSameSubLang = MatchesSubtitleLanguage(ss.language);
 
     // The user does not want to read subtitles in a language they are already listening to.
-    // Forced subtitles are kept, as they usually only translate foreign language parts.
-    // Both languages must be declared, a stream that states none is never assumed to match.
+    // Forced subtitles take their place, as they usually only translate foreign language parts.
+    if (IsForcedForHiddenAudioLanguage(ss))
+      return false;
+
     if (m_hideSameAudioLang && (ss.flags & FLAG_FORCED) == 0 &&
-        IsKnownLanguage(m_playedAudioLang) && IsKnownLanguage(ss.language) &&
-        ss.language.Matches(m_playedAudioLang))
+        MatchesPlayedAudioLanguage(ss.language))
     {
       return true;
     }
@@ -301,6 +323,15 @@ public:
                              STREAM_SOURCE_MASK(lh.source) == STREAM_SOURCE_TEXT;
     const bool isRexternal = STREAM_SOURCE_MASK(rh.source) == STREAM_SOURCE_DEMUX_SUB ||
                              STREAM_SOURCE_MASK(rh.source) == STREAM_SOURCE_TEXT;
+
+    if (m_filter.HidesSameAudioLanguage())
+    {
+      // External subtitles stay ahead of the forced ones only when they are shown, as those in
+      // the audio language are hidden as well
+      PREDICATE_RETURN(isLexternal && relevant(lh), isRexternal && relevant(rh));
+      PREDICATE_RETURN(m_filter.IsForcedForHiddenAudioLanguage(lh),
+                       m_filter.IsForcedForHiddenAudioLanguage(rh));
+    }
 
     // prefer external subs (note that this prevents any fallback to internal subs)
     PREDICATE_RETURN(isLexternal, isRexternal);
@@ -1444,6 +1475,10 @@ void CVideoPlayer::Prepare()
     m_error = true;
     return;
   }
+
+  if (m_processInfo)
+    m_processInfo->SetStateStreaming(EvaluateIsStreaming());
+
   // give players a chance to reconsider now codecs are known
   CreatePlayers();
 
@@ -1616,6 +1651,9 @@ void CVideoPlayer::Process()
         m_bAbortRequest = true;
         break;
       }
+
+      if (m_processInfo)
+        m_processInfo->SetStateStreaming(EvaluateIsStreaming());
 
       // on channel switch we don't want to close stream players at this
       // time. we'll get the stream change event later
@@ -5960,6 +5998,48 @@ bool CVideoPlayer::IsLiveStream() const
   if (!m_processInfo)
     return false;
   return m_processInfo->IsRealtimeStream();
+}
+
+bool CVideoPlayer::IsStreaming() const
+{
+  if (!m_processInfo)
+    return false;
+  return m_processInfo->IsStreaming();
+}
+
+bool CVideoPlayer::EvaluateIsStreaming() const
+{
+  if (m_pInputStream && m_pInputStream->IsStreaming())
+    return true;
+
+  if (m_pDemuxer && m_pDemuxer->IsStreaming())
+    return true;
+
+  if (!m_item.GetProperty(STREAM_PROPERTY_INPUTSTREAM).empty())
+    return true;
+
+  const std::string& mime = m_item.GetMimeType();
+  if (StringUtils::EqualsNoCase(mime, "application/vnd.apple.mpegurl") ||
+      StringUtils::EqualsNoCase(mime, "vnd.apple.mpegurl") ||
+      StringUtils::EqualsNoCase(mime, "application/x-mpegURL") ||
+      StringUtils::EqualsNoCase(mime, "application/dash+xml") ||
+      StringUtils::EqualsNoCase(mime, "application/vnd.ms-sstr+xml"))
+  {
+    return true;
+  }
+
+  // Dyn path extensions
+  if (m_item.IsType(".m3u8") || m_item.IsType(".mpd") || m_item.IsType(".ism") ||
+      m_item.IsType(".isml"))
+    return true;
+
+  // Smoothstreaming urls may look like https://server/path/subpath.ism/manifest?foo=bar
+  const std::string filename = m_item.GetDynURL().GetFileName();
+  if (StringUtils::EndsWithNoCase(filename, ".ism/manifest") ||
+      StringUtils::EndsWithNoCase(filename, ".isml/manifest"))
+    return true;
+
+  return false;
 }
 
 bool CVideoPlayer::Supports(EINTERLACEMETHOD method) const

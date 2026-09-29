@@ -13,6 +13,7 @@
 #include "GUIUserMessages.h"
 #include "ServiceBroker.h"
 #include "URL.h"
+#include "Util.h"
 #include "cores/VideoPlayer/DVDFileInfo.h"
 #include "dialogs/GUIDialogFileBrowser.h"
 #include "dialogs/GUIDialogOK.h"
@@ -41,6 +42,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -297,6 +299,10 @@ void CGUIDialogVideoManagerVersions::SetDefaultVideoVersion(const CFileItem& ver
   CGUIMessage msg{GUI_MSG_NOTIFY_ALL,        0,           0, GUI_MSG_UPDATE_ITEM,
                   GUI_MSG_FLAG_FORCE_UPDATE, m_videoAsset};
   CServiceBroker::GetGUI()->GetWindowManager().SendMessage(msg);
+
+  // Widgets reload on the announcement
+  CUtil::DeleteVideoDatabaseDirectoryCache();
+  CVideoDatabase::AnnounceUpdate(m_videoAsset->GetVideoInfoTag()->m_type, dbId);
 }
 
 bool CGUIDialogVideoManagerVersions::AddVideoVersion()
@@ -491,6 +497,7 @@ bool CGUIDialogVideoManagerVersions::ChoosePlaylist(const std::shared_ptr<CFileI
   try
   {
     int idFile{-1};
+    std::optional<std::pair<std::string, int>> announce;
     m_database.BeginTransaction();
     if (replaceExistingFile == ReplaceExistingFile::YES)
     {
@@ -511,6 +518,7 @@ bool CGUIDialogVideoManagerVersions::ChoosePlaylist(const std::shared_ptr<CFileI
           tag->m_iDbId = idFile;
         tag->m_iFileId = idFile;
         KODI::VIDEO::UTILS::NotifyItemPathChanged(*item, oldPath, oldFileId);
+        announce = {owner.GetVideoInfoTag()->m_type, owner.GetVideoInfoTag()->m_iDbId};
       }
     }
     else
@@ -550,6 +558,13 @@ bool CGUIDialogVideoManagerVersions::ChoosePlaylist(const std::shared_ptr<CFileI
       m_database.SetArtForItem(idFile, MediaTypeVideoVersion, item->GetArt());
 
       m_database.CommitTransaction();
+
+      // Widgets reload on the announcement
+      if (announce)
+      {
+        CUtil::DeleteVideoDatabaseDirectoryCache();
+        CVideoDatabase::AnnounceUpdate(announce->first, announce->second);
+      }
     }
     else
       m_database.RollbackTransaction();
@@ -894,6 +909,21 @@ std::pair<VersionConversionResult, int> CGUIDialogVideoManagerVersions::ProcessV
                const std::string currentBase{URIUtils::GetDiscBase(current->GetDynPath())};
                return !currentBase.empty() && currentBase == base;
              });
+  }
+
+  // Without the user to confirm, a title/year match is not enough when the unique ids disagree
+  if (mode == Mode::NON_INTERACTIVE)
+  {
+    erase_if(list,
+             [&item](const std::shared_ptr<CFileItem>& current) {
+               return item.GetVideoInfoTag()->HasConflictingUniqueID(*current->GetVideoInfoTag());
+             });
+
+    if (list.IsEmpty())
+    {
+      CLog::LogF(LOGINFO, "Automated video version creation stopped by conflicting unique ids");
+      return {VersionConversionResult::NOT_NEEDED, NO_VERSION};
+    }
   }
 
   return ChooseVideoAndConvertToVideoVersion(list, itemType, dbId, videodb, MediaRole::NewVersion,

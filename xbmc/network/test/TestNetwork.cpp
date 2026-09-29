@@ -9,15 +9,11 @@
 #include "ServiceBroker.h"
 #include "network/Network.h"
 
+#include <future>
+#include <mutex>
+
 #include <arpa/inet.h>
 #include <gtest/gtest.h>
-
-#if defined(TARGET_LINUX) && !defined(TARGET_ANDROID)
-#include <errno.h>
-
-#include <sys/socket.h>
-#include <unistd.h>
-#endif
 
 class TestNetwork : public testing::Test
 {
@@ -42,21 +38,82 @@ private:
 
 TEST_F(TestNetwork, PingHost)
 {
-#if defined(TARGET_LINUX) && !defined(TARGET_ANDROID)
-  // CNetworkLinux::PingHost() uses an unprivileged Linux "ping socket"
-  // (SOCK_DGRAM + IPPROTO_ICMP), which the kernel refuses unless the
-  // calling process's group is within net.ipv4.ping_group_range - disabled
-  // by default on most distributions (see icmp(7)).
-  int probe = socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP);
-  if (probe < 0 && (errno == EACCES || errno == EPERM))
-  {
-    GTEST_SKIP() << "Unprivileged ICMP ping sockets are not permitted on this host (see "
-                    "net.ipv4.ping_group_range in icmp(7))";
-  }
-  if (probe >= 0)
-    close(probe);
-#endif
-
   EXPECT_TRUE(PingHost("127.0.0.1"));
   EXPECT_FALSE(PingHost("10.254.254.254"));
+}
+
+namespace
+{
+void ExpectInterfaceListLocked(std::mutex& mutex)
+{
+  EXPECT_FALSE(std::async(std::launch::async,
+                          [&mutex]
+                          {
+                            std::unique_lock lock(mutex, std::try_to_lock);
+                            return lock.owns_lock();
+                          })
+                   .get());
+}
+
+class CLockCheckingInterface : public CNetworkInterface
+{
+public:
+  explicit CLockCheckingInterface(std::mutex& mutex) : m_mutex(mutex) {}
+
+  bool IsEnabled() const override { return true; }
+  bool IsConnected() const override
+  {
+    ExpectInterfaceListLocked(m_mutex);
+    return true;
+  }
+  std::string GetMacAddress() const override { return {}; }
+  void GetMacAddressRaw(char[6]) const override {}
+  bool GetHostMacAddress(unsigned long, std::string&) const override { return false; }
+  std::string GetCurrentIPAddress() const override
+  {
+    ExpectInterfaceListLocked(m_mutex);
+    return "192.0.2.1";
+  }
+  std::string GetCurrentNetmask() const override
+  {
+    ExpectInterfaceListLocked(m_mutex);
+    return "255.255.255.0";
+  }
+  std::string GetCurrentDefaultGateway() const override
+  {
+    ExpectInterfaceListLocked(m_mutex);
+    return {};
+  }
+
+private:
+  std::mutex& m_mutex;
+};
+
+class CLockCheckingNetwork : public CNetworkBase
+{
+public:
+  std::unique_lock<std::mutex> LockInterfaceList() override { return std::unique_lock(m_mutex); }
+  std::vector<CNetworkInterface*>& GetInterfaceList() override
+  {
+    ExpectInterfaceListLocked(m_mutex);
+    return m_interfaces;
+  }
+  bool GetHostName(std::string&) override { return false; }
+  bool PingHost(unsigned long, unsigned int) override { return false; }
+  std::vector<std::string> GetNameServers() override { return {}; }
+
+private:
+  std::mutex m_mutex;
+  CLockCheckingInterface m_interface{m_mutex};
+  std::vector<CNetworkInterface*> m_interfaces{&m_interface};
+};
+} // namespace
+
+TEST_F(TestNetwork, InterfaceListRemainsLockedDuringReads)
+{
+  CLockCheckingNetwork network;
+  EXPECT_TRUE(network.IsAvailable());
+  EXPECT_TRUE(network.IsLocalHost("192.0.2.1"));
+  EXPECT_TRUE(network.HasInterfaceForIP(0xc0000202));
+  EXPECT_NE(network.GetFirstConnectedInterface(), nullptr);
 }

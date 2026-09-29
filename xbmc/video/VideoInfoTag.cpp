@@ -136,6 +136,8 @@ bool CVideoInfoTag::Save(TiXmlNode *node, const std::string &tag, bool savePathI
 
   // we start with a <tag> tag
   TiXmlElement movieElement(tag.c_str());
+  if (tag == "movie" || tag == "tvshow" || tag == "episodedetails" || tag == "musicvideo")
+    movieElement.SetAttribute("version", 0);
   TiXmlNode *movie = node->InsertEndChild(movieElement);
 
   if (!movie) return false;
@@ -1178,6 +1180,19 @@ const std::string& CVideoInfoTag::GetDefaultUniqueID() const
 bool CVideoInfoTag::HasUniqueID() const
 {
   return !m_uniqueIDs.empty();
+}
+
+bool CVideoInfoTag::HasConflictingUniqueID(const CVideoInfoTag& other) const
+{
+  // Old records may have the type 'unknown', which does not identify the kind of id
+  return std::ranges::any_of(m_uniqueIDs,
+                             [&other](const auto& id)
+                             {
+                               const auto it{other.m_uniqueIDs.find(id.first)};
+                               return id.first != "unknown" && !id.second.empty() &&
+                                      it != other.m_uniqueIDs.end() && !it->second.empty() &&
+                                      it->second != id.second;
+                             });
 }
 
 std::string CVideoInfoTag::GetCast(const std::string& separator,
