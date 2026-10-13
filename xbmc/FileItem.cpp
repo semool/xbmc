@@ -87,6 +87,7 @@ using namespace PLAYLIST;
 using namespace MUSIC_INFO;
 using namespace PVR;
 using namespace GAME;
+using KODI::MEDIA::IsContainer;
 
 namespace
 {
@@ -94,7 +95,7 @@ namespace
 bool HasNoLocalArtLocation(const CFileItem& item)
 {
   const std::string& path{item.GetPath()};
-  return path.empty() || PLACEHOLDER::IsNewPlaylist(path) || item.IsShareOrDrive() ||
+  return path.empty() || ITEM::PLACEHOLDER::IsNewPlaylist(path) || item.IsShareOrDrive() ||
          NETWORK::IsInternetStream(item) || URIUtils::IsUPnP(path) ||
          (URIUtils::IsFTP(path) &&
           !CServiceBroker::GetSettingsComponent()->GetAdvancedSettings()->m_bFTPThumbs) ||
@@ -773,8 +774,9 @@ void CFileItem::ToSortable(SortItem &sortable, const Fields &fields) const
 
 bool CFileItem::Exists(bool bUseCache /* = true */) const
 {
-  if (m_strPath.empty() || IsPath(PLACEHOLDER::ADD_SOURCE) || NETWORK::IsInternetStream(*this) ||
-      IsParentFolder() || IsVirtualDirectoryRoot() || IsPlugin() || IsPVR())
+  if (m_strPath.empty() || IsPath(ITEM::PLACEHOLDER::ADD_SOURCE) ||
+      NETWORK::IsInternetStream(*this) || IsParentFolder() || IsVirtualDirectoryRoot() ||
+      IsPlugin() || IsPVR())
     return true;
 
   if (VIDEO::IsVideoDb(*this) && HasVideoInfoTag())
@@ -956,6 +958,11 @@ bool CFileItem::IsLibraryFolder() const
     return true;
 
   return GetURL().IsLibraryFolder();
+}
+
+bool CFileItem::IsStrm() const
+{
+  return GetURL().HasExtension(".strm");
 }
 
 bool CFileItem::IsPythonScript() const
@@ -1275,7 +1282,7 @@ bool IsSameLibraryItem(const CFileItem& item, const CFileItem& other)
       }};
 
   // For a version its db id is a file id
-  if (myTag.m_type == MediaTypeVideoVersion)
+  if (myTag.GetMediaType() == MEDIA::TYPE::VIDEO_VERSION)
   {
     if (myTag.m_iFileId == -1 || otherTag.m_iFileId == -1)
       return myTag.m_iFileId == otherTag.m_iFileId && myTag.m_iDbId == otherTag.m_iDbId;
@@ -1901,7 +1908,7 @@ std::string CFileItem::GetThumbHideIfUnwatched(const CFileItem* item) const
   const std::shared_ptr<CSettingList> setting(std::dynamic_pointer_cast<CSettingList>(
       CServiceBroker::GetSettingsComponent()->GetSettings()->GetSetting(
           CSettings::SETTING_VIDEOLIBRARY_SHOWUNWATCHEDPLOTS)));
-  if (setting && item->HasVideoInfoTag() && item->GetVideoInfoTag()->m_type == MediaTypeEpisode &&
+  if (setting && item->HasVideoInfoTag() && item->GetVideoInfoTag()->GetMediaType() == MEDIA::TYPE::EPISODE &&
       item->GetVideoInfoTag()->GetPlayCount() == 0 &&
       !CSettingUtils::FindIntInList(setting,
                                     CSettings::VIDEOLIBRARY_THUMB_SHOW_UNWATCHED_EPISODE) &&
@@ -2020,7 +2027,7 @@ std::string CFileItem::GetBaseMoviePath(bool bUseFolderNames) const
   }
   else if (bUseFolderNames && !URIUtils::IsInArchive(strMovieName) &&
            (!IsFolder() || (HasVideoInfoTag() && GetVideoInfoTag()->m_iDbId > 0 &&
-                            !CMediaTypes::IsContainer(GetVideoInfoTag()->m_type))))
+                            !IsContainer(GetVideoInfoTag()->GetMediaType()))))
   {
     const std::string name{strMovieName};
     if (!URIUtils::GetParentPath(name, strMovieName))
@@ -2102,6 +2109,14 @@ std::string CFileItem::GetLocalMetadataPath() const
     return URIUtils::GetDiscBasePath(GetDynPath());
 
   return URIUtils::GetParentPath(m_strPath);
+}
+
+std::string CFileItem::GetSubtitleAnchorPath() const
+{
+  if (IsStrm() && !IsPlugin())
+    return m_strPath;
+
+  return GetDynPath();
 }
 
 bool CFileItem::LoadMusicTag()
@@ -2437,14 +2452,20 @@ VideoDbContentType CFileItem::GetVideoContentType() const
   if (HasVideoInfoTag())
   {
     const auto& tag{GetVideoInfoTag()};
-    if (tag->m_type == MediaTypeTvShow)
-      type = TVSHOWS;
-    if (tag->m_type == MediaTypeEpisode)
-      return EPISODES;
-    if (tag->m_type == MediaTypeMusicVideo)
-      return MUSICVIDEOS;
-    if (tag->m_type == MediaTypeAlbum)
-      return MUSICALBUMS;
+    switch (tag->GetMediaType())
+    {
+      case MEDIA::TYPE::TV_SHOW:
+        type = TVSHOWS;
+        break;
+      case MEDIA::TYPE::EPISODE:
+        return EPISODES;
+      case MEDIA::TYPE::MUSIC_VIDEO:
+        return MUSICVIDEOS;
+      case MEDIA::TYPE::ALBUM:
+        return MUSICALBUMS;
+      default:
+        break;
+    }
     if (tag->m_strFileNameAndPath.starts_with("bluray://removable"))
       // cannot tell if a removable bluray is a movie or a tv show
       return UNKNOWN;

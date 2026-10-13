@@ -279,12 +279,20 @@ void CSaveFileState::DoWork(CFileItem& item,
           if (replacedFileId > 0)
             msgItem->SetProperty(ITEM::PROPERTY::REPLACED_FILE_ID, replacedFileId);
 
-          CGUIMessage message(GUI_MSG_NOTIFY_ALL, CServiceBroker::GetGUI()->GetWindowManager().GetActiveWindow(), 0, GUI_MSG_UPDATE_ITEM, 0, msgItem);
+          int64_t updateFlags = 0;
+          if (item.IsStrm() && !item.IsPlugin() && item.GetDynPath() != item.GetPath())
+          {
+            // Prevent replacing the library title with the remote resource name.
+            updateFlags |= GUI_MSG_FLAG_KEEP_CURRENT_LABELS;
+          }
+          CGUIMessage message(GUI_MSG_NOTIFY_ALL,
+                              CServiceBroker::GetGUI()->GetWindowManager().GetActiveWindow(), 0,
+                              GUI_MSG_UPDATE_ITEM, updateFlags, msgItem);
           CServiceBroker::GetGUI()->GetWindowManager().SendThreadMessage(message);
 
           // Widgets reload on the announcement, which must follow the file change
           if (replacedFileId > 0)
-            CVideoDatabase::AnnounceUpdate(tag->m_type, tag->m_iDbId);
+            CVideoDatabase::AnnounceUpdate(tag->GetMediaType(), tag->m_iDbId);
         }
 
         CLog::LogF(LOGDEBUG, "Finished saving file state for video item {} (listing update {})",

@@ -232,7 +232,7 @@ bool CGUIWindowVideoBase::OnMessage(CGUIMessage& message)
 bool CGUIWindowVideoBase::OnItemInfo(const CFileItem& fileItem)
 {
   if (fileItem.IsParentFolder() || fileItem.IsShareOrDrive() ||
-      fileItem.IsPath(PLACEHOLDER::ADD_SOURCE) ||
+      fileItem.IsPath(ITEM::PLACEHOLDER::ADD_SOURCE) ||
       (PLAYLIST::IsPlayList(fileItem) && !URIUtils::HasExtension(fileItem.GetDynPath(), ".strm")))
     return false;
 
@@ -244,13 +244,13 @@ bool CGUIWindowVideoBase::OnItemInfo(const CFileItem& fileItem)
     return KODI::UTILS::GUILIB::CGUIContentUtils::ShowInfoForItem(fileItem);
 
   // Video version
-  if (fileItem.HasVideoInfoTag() && fileItem.GetVideoInfoTag()->m_type == MediaTypeVideoVersion)
+  if (fileItem.HasVideoInfoTag() &&
+      fileItem.GetVideoInfoTag()->GetMediaType() == MEDIA::TYPE::VIDEO_VERSION)
     return false;
 
   // Movie set
   if (fileItem.IsFolder() && VIDEO::IsVideoDb(fileItem) &&
-      fileItem.GetPath() != VIDEO::DB_PATH::MOVIE_SETS &&
-      StringUtils::StartsWith(fileItem.GetPath(), VIDEO::DB_PATH::MOVIE_SETS))
+      fileItem.GetVideoContentType() == VideoDbContentType::MOVIE_SETS)
     return ShowInfoAndRefresh(std::make_shared<CFileItem>(fileItem), nullptr);
 
   // Music video. Match visibility test of CMusicInfo::IsVisible
@@ -295,7 +295,7 @@ bool CGUIWindowVideoBase::OnItemInfo(const CFileItem& fileItem)
   if ((VIDEO::IsVideoDb(item) && item.HasVideoInfoTag()) ||
       (item.HasVideoInfoTag() && item.GetVideoInfoTag()->m_iDbId != -1))
   {
-    if (item.GetVideoInfoTag()->m_type == MediaTypeSeason)
+    if (item.GetVideoInfoTag()->GetMediaType() == MEDIA::TYPE::SEASON)
     { // clear out the art - we're really grabbing the info on the show here
       item.ClearArt();
       item.GetVideoInfoTag()->m_iDbId = item.GetVideoInfoTag()->m_iIdShow;
@@ -409,7 +409,8 @@ CGUIWindowVideoBase::ShowInfoResult CGUIWindowVideoBase::ShowInfo(
       if (item->IsFolder())
       {
         const CVideoInfoTag* videoTag = item->GetVideoInfoTag();
-        if (videoTag && videoTag->m_type == MediaTypeSeason && videoTag->m_iSeason != -1)
+        if (videoTag && videoTag->GetMediaType() == MEDIA::TYPE::SEASON &&
+            videoTag->m_iSeason != -1)
           bHasInfo = m_database.GetSeasonInfo(videoTag->m_iIdSeason, movieDetails);
         if (!bHasInfo)
           bHasInfo = m_database.GetTvShowInfo(item->GetPath(), movieDetails, dbId);
@@ -664,8 +665,9 @@ bool CGUIWindowVideoBase::OnSelect(int iItem)
   const std::shared_ptr<CFileItem> item{m_vecItems->Get(iItem)};
 
   const std::string path{item->GetPath()};
-  if (!item->IsFolder() && path != PLACEHOLDER::ADD_SOURCE &&
-      ((!PLACEHOLDER::IsNewItem(path) && !URIUtils::IsScript(path) && !URIUtils::IsPlugin(path)) ||
+  if (!item->IsFolder() && path != ITEM::PLACEHOLDER::ADD_SOURCE &&
+      ((!ITEM::PLACEHOLDER::IsNewItem(path) && !URIUtils::IsScript(path) &&
+        !URIUtils::IsPlugin(path)) ||
        (URIUtils::IsPlugin(path) &&
         item->GetProperty(ITEM::PROPERTY::IS_PLAYABLE).asBoolean(false))))
   {
@@ -1200,7 +1202,7 @@ bool CGUIWindowVideoBase::GetDirectory(const std::string &strDirectory, CFileIte
 
   // add in the "New Playlist" item if we're in the playlists folder
   if ((items.GetPath() == "special://videoplaylists/") &&
-      !items.Contains(PLACEHOLDER::NEW_PLAYLIST))
+      !items.Contains(ITEM::PLACEHOLDER::NEW_PLAYLIST))
   {
     const std::shared_ptr<CProfileManager> profileManager = CServiceBroker::GetSettingsComponent()->GetProfileManager();
 
@@ -1216,8 +1218,8 @@ bool CGUIWindowVideoBase::GetDirectory(const std::string &strDirectory, CFileIte
     newPlaylist->SetLabelPreformatted(true);
     items.Add(newPlaylist);
 */
-    newPlaylist =
-        std::make_shared<CFileItem>(std::string{PLACEHOLDER::NEW_SMART_PLAYLIST} + "video", false);
+    newPlaylist = std::make_shared<CFileItem>(
+        std::string{ITEM::PLACEHOLDER::NEW_SMART_PLAYLIST} + "video", false);
     newPlaylist->SetLabel(CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(
         21437)); // "new smart playlist..."
     newPlaylist->SetArt(ART::TYPE::ICON, "DefaultAddSource.png");
@@ -1307,7 +1309,7 @@ bool CGUIWindowVideoBase::CheckFilterAdvanced(CFileItemList &items) const
 
 bool CGUIWindowVideoBase::CanContainFilter(const std::string &strDirectory) const
 {
-  return URIUtils::IsProtocol(strDirectory, VIDEO::DB_PATH::ROOT);
+  return URIUtils::IsVideoDb(strDirectory);
 }
 
 /// \brief Search the current directory for a string got from the virtual keyboard

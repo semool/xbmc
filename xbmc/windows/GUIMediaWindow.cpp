@@ -392,7 +392,8 @@ bool CGUIMediaWindow::OnMessage(CGUIMessage& message)
 
         if (IsActive() || (flag & GUI_MSG_FLAG_FORCE_UPDATE))
         {
-          m_vecItems->UpdateItem(newItem.get());
+          const bool replaceLabels = !(flag & GUI_MSG_FLAG_KEEP_CURRENT_LABELS);
+          m_vecItems->UpdateItem(newItem.get(), replaceLabels);
 
           if (flag & GUI_MSG_FLAG_UPDATE_LIST)
           { // need the list updated as well
@@ -911,7 +912,7 @@ bool CGUIMediaWindow::Update(const std::string &strDirectory, bool updateFilterP
     const std::string& strLabel =
         CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(showLabel);
     CFileItemPtr pItem(new CFileItem(strLabel));
-    pItem->SetPath(PLACEHOLDER::ADD_SOURCE);
+    pItem->SetPath(ITEM::PLACEHOLDER::ADD_SOURCE);
     pItem->SetArt(ART::TYPE::ICON, "DefaultAddSource.png");
     pItem->SetLabel(strLabel);
     pItem->SetLabelPreformatted(true);
@@ -950,8 +951,6 @@ bool CGUIMediaWindow::Update(const std::string &strDirectory, bool updateFilterP
   RestoreSelectedItemFromHistory();
 
   m_history.AddPath(m_vecItems->GetPath(), m_strFilterPath);
-
-  //m_history.DumpPathHistory();
 
   return true;
 }
@@ -1029,7 +1028,7 @@ bool CGUIMediaWindow::OnClick(int iItem, const std::string &player)
     return true;
   }
 
-  if (pItem->GetPath() == PLACEHOLDER::ADD_SOURCE ||
+  if (pItem->GetPath() == ITEM::PLACEHOLDER::ADD_SOURCE ||
       pItem->GetPath() == "sources://add/") // 'add source button' in empty root
   {
     if (profileManager->IsMasterProfile())
@@ -1146,14 +1145,14 @@ bool CGUIMediaWindow::OnClick(int iItem, const std::string &player)
   {
     SaveSelectedItemInHistory();
 
-    if (pItem->GetPath() == PLACEHOLDER::NEW_PLAYLIST)
+    if (pItem->GetPath() == ITEM::PLACEHOLDER::NEW_PLAYLIST)
     {
       m_vecItems->RemoveDiscCache(GetID());
       CServiceBroker::GetGUI()->GetWindowManager().ActivateWindow(WINDOW_MUSIC_PLAYLIST_EDITOR,
-                                                                  PLACEHOLDER::NEW_PLAYLIST);
+                                                                  ITEM::PLACEHOLDER::NEW_PLAYLIST);
       return true;
     }
-    else if (StringUtils::StartsWithNoCase(pItem->GetPath(), PLACEHOLDER::NEW_SMART_PLAYLIST))
+    else if (StringUtils::StartsWithNoCase(pItem->GetPath(), ITEM::PLACEHOLDER::NEW_SMART_PLAYLIST))
     {
       m_vecItems->RemoveDiscCache(GetID());
       if (CGUIDialogSmartPlaylistEditor::NewPlaylist(pItem->GetPath().substr(19)))
@@ -1259,8 +1258,6 @@ bool CGUIMediaWindow::GoParentFolder()
 
   if (URIUtils::PathEquals(m_vecItems->GetPath(), GetRootPath()))
     return false;
-
-  //m_history.DumpPathHistory();
 
   const std::string currentPath = m_vecItems->GetPath();
   std::string parentPath = m_history.GetParentPath();
@@ -1462,7 +1459,6 @@ void CGUIMediaWindow::SetHistoryForPath(const std::string& strDirectory)
           m_history.AddPathFront(strPath);
           m_history.AddPathFront("");
 
-          //m_history.DumpPathHistory();
           return ;
         }
       }
@@ -1493,8 +1489,6 @@ void CGUIMediaWindow::SetHistoryForPath(const std::string& strDirectory)
   }
   else
     m_history.ClearPathHistory();
-
-  //m_history.DumpPathHistory();
 }
 
 /*!
@@ -1548,10 +1542,15 @@ bool CGUIMediaWindow::OnPlayAndQueueMedia(const CFileItemPtr& item, const std::s
              { return i->IsZIP() || i->IsRAR() || i->IsFolder(); });
 
     // Chosen item
-    int mediaToPlay =
-        std::distance(playlist.begin(), std::find_if(playlist.begin(), playlist.end(),
-                                                     [&item](const std::shared_ptr<CFileItem>& i)
-                                                     { return i->GetPath() == item->GetPath(); }));
+    int mediaToPlay = std::distance(
+        playlist.begin(), std::find_if(playlist.begin(), playlist.end(),
+                                       [&item](const std::shared_ptr<CFileItem>& i)
+                                       {
+                                         // cue sheet tracks share one path: compare the start
+                                         // offset too, otherwise the first track always plays
+                                         return i->GetPath() == item->GetPath() &&
+                                                i->GetStartOffset() == item->GetStartOffset();
+                                       }));
     /* For .mka albums, all tracks are in the same file so using path as above will always play the
      * first track.  Use the track and disk number to ensure we start playback on the correct track.
      * This only applies to mka or m4b items played back via files view. Music library takes
