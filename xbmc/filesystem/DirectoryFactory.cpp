@@ -129,13 +129,15 @@ IDirectory* CDirectoryFactory::Create(const CURL& url)
 
   // Load directory flag from the VFS. If the url is truly a directory, don't
   // attempt to use a file-directory loader.
-  bool canBeFileDirectory = true;
+  bool canBeFileDirectory = url.SupportsPathOperations();
 
   struct __stat64 st = {};
   static constexpr auto excludedProtocols =
       make_set<std::string_view>({"upnp", "addons", "favourites", "sources"});
-  const bool exclude{excludedProtocols.contains(url.GetProtocol())};
-  if (!exclude && CFile::Stat(URIUtils::SubstitutePath(url), &st) == 0)
+  // Stat-ing an internet stream costs a network round trip on every playback
+  const bool exclude{excludedProtocols.contains(url.GetProtocol()) ||
+                     URIUtils::IsInternetStream(url)};
+  if (canBeFileDirectory && !exclude && CFile::Stat(URIUtils::SubstitutePath(url), &st) == 0)
   {
     item.SetFolder(S_ISDIR(st.st_mode));
     canBeFileDirectory = !item.IsFolder();

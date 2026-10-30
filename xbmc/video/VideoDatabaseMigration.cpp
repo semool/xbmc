@@ -1440,9 +1440,35 @@ void CVideoDatabase::UpdateTables(int iVersion)
          {"movie", "tvshow", "seasons", "episode", "musicvideo", "sets", "genre", "tag"})
       AddAutoIncrement(table);
   }
+
+  if (iVersion < 152)
+  {
+    constexpr int VideoAssetType_EXTRA = 2;
+    constexpr int VideoAssetTypeOwner_SYSTEM = 0;
+
+    // The kinds of video extra are built-in types of extras, where the rows were empty versions
+    for (int id = 40500; id <= 40699; ++id)
+    {
+      const std::string& type{CServiceBroker::GetResourcesComponent().GetLocalizeStrings().Get(id)};
+      m_pDS->exec(PrepareSQL(
+          "UPDATE videoversiontype SET name = '%s', owner = %i, itemType = %i WHERE id = %i",
+          type.c_str(), VideoAssetTypeOwner_SYSTEM, VideoAssetType_EXTRA, id));
+    }
+
+    // What an extra of a kind is called is no type
+    m_pDS->exec("DELETE FROM videoversiontype WHERE id BETWEEN 40700 AND 40799");
+  }
+
+  if (iVersion < 153)
+  {
+    m_pDS->exec("ALTER TABLE settings ADD Hue float DEFAULT 50");
+    m_pDS->exec("ALTER TABLE settings ADD Saturation float DEFAULT 50");
+    // gamma was never applied and stored 20, 50 is neutral now
+    m_pDS->exec("UPDATE settings SET Gamma=50");
+  }
 }
 
 int CVideoDatabase::GetSchemaVersion() const
 {
-  return 151;
+  return 153;
 }

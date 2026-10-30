@@ -9,7 +9,11 @@
 #include "ServiceBroker.h"
 #include "Util.h"
 #include "cores/VideoPlayer/Interface/StreamInfo.h"
+#include "filesystem/Directory.h"
+#include "filesystem/File.h"
+#include "filesystem/SpecialProtocol.h"
 #include "settings/AdvancedSettings.h"
+#include "settings/MediaSettings.h"
 #include "settings/Settings.h"
 #include "settings/SettingsComponent.h"
 #include "utils/StringUtils.h"
@@ -99,6 +103,15 @@ TEST(TestUtil, ValidatePath)
 {
   std::string path;
 #ifdef TARGET_WINDOWS
+  for (const std::string drive : {"C", "c", "D", "x"})
+  {
+    SCOPED_TRACE(drive);
+    EXPECT_EQ(drive + R"(:\\Movies\movie.mkv)", CUtil::ValidatePath(drive + "://Movies/movie.mkv"));
+    EXPECT_EQ(drive + R"(:\Movies\movie.mkv)",
+              CUtil::ValidatePath(drive + "://Movies/movie.mkv", true));
+  }
+  EXPECT_EQ(R"(C:\file)", CUtil::ValidatePath("C:/file"));
+  EXPECT_EQ("C:relative", CUtil::ValidatePath("C:relative"));
   path = "C:\\\\foo\\\\bar\\";
   EXPECT_EQ(CUtil::ValidatePath(path, true), "C:\\foo\\bar\\");
   path = "\\\\foo\\\\bar\\";
@@ -652,6 +665,12 @@ const TestBaseData Paths[] = {
      "\\\\Server\\Movies\\movie\\", "movie"},
     {"archive://%5c%5cServer%5cMovies%5cmovie%5cdisc%201%5cmovie.tar.gz/file.mkv",
      "\\\\Server\\Movies\\movie\\disc 1\\", "file"},
+    {"file:/videos/movie.mkv?cache=1#part", "file:/videos/", "movie"},
+    {"http:/videos/movie.mkv?cache=1#part", "http:/videos/", "movie"},
+    {"http://host/videos/movie.mkv?cache=1#part|auth=token", "http://host/videos/|auth=token",
+     "movie"},
+    {"magnet:/videos/movie.mkv?xt=urn:btih:hash&tr=one&tr=two#part",
+     "magnet:/videos/?xt=urn:btih:hash&tr=one&tr=two#part", "movie"},
     // HTTP URL with query string
     {"http://192.168.1.1/movie.mkv?session=abc", "http://192.168.1.1/", "movie"},
     {"http://192.168.1.1/path/movie.mkv?session=abc", "http://192.168.1.1/path/", "movie"},
@@ -980,6 +999,14 @@ TEST_F(TestTitleFromPath, DecodesAnEscapedNameWhileHidingTheExtension)
   EXPECT_EQ("file_name", CUtil::GetTitleFromPath("davs://server/files/file_name.mkv"));
 }
 
+TEST_F(TestTitleFromPath, DecodesLosslessURIPathNames)
+{
+  EXPECT_EQ("C++ movie%20",
+            CUtil::GetTitleFromPath("file:/videos/C++%20movie%2520.mkv?title=ignored#part"));
+  EXPECT_EQ("Video clips",
+            CUtil::GetTitleFromPath("http:/Video%20clips/?title=ignored#part", true));
+}
+
 /*! A local path is not escaped, so decoding one would corrupt every name holding a plus. */
 TEST_F(TestTitleFromPath, LeavesALocalNameAlone)
 {
@@ -1037,4 +1064,67 @@ TEST(TestUtil, FoundationNativeAndNestedNormalization)
   EXPECT_EQ("zip://%2ftmp%2fa.zip/dir//a.mkv",
             CUtil::ValidatePath("zip://%2ftmp%2fa.zip/dir//a.mkv", true));
   EXPECT_EQ("http://server/a%2Fb//c", CUtil::ValidatePath("http://server/a%2Fb//c", true));
+}
+
+namespace
+{
+//! The custom subtitle folder is checked once per session, the first time subtitles are looked for
+class TestCustomSubtitleFolder : public Test
+{
+protected:
+  void SetUp() override
+  {
+    XFILE::CDirectory::RemoveRecursive(m_folder);
+    ASSERT_TRUE(XFILE::CDirectory::Create(m_folder));
+    XFILE::CFile file;
+    ASSERT_TRUE(file.OpenForWrite(m_video, true));
+    file.Close();
+    CMediaSettings::GetInstance().SetAdditionalSubtitleDirectoryChecked(0);
+  }
+
+  void TearDown() override
+  {
+    Settings()->SetString(CSettings::SETTING_SUBTITLES_CUSTOMPATH, m_customPath);
+    CMediaSettings::GetInstance().SetAdditionalSubtitleDirectoryChecked(m_checked);
+    XFILE::CDirectory::RemoveRecursive(m_folder);
+  }
+
+  static std::shared_ptr<CSettings> Settings()
+  {
+    return CServiceBroker::GetSettingsComponent()->GetSettings();
+  }
+
+  const std::string m_folder{
+      CSpecialProtocol::TranslatePath("special://temp/TestCustomSubtitleFolder/")};
+  const std::string m_video{URIUtils::AddFileToFolder(m_folder, "Film.mkv")};
+  const std::string m_customPath{Settings()->GetString(CSettings::SETTING_SUBTITLES_CUSTOMPATH)};
+  const int m_checked{CMediaSettings::GetInstance().GetAdditionalSubtitleDirectoryChecked()};
+};
+} // namespace
+
+TEST_F(TestCustomSubtitleFolder, AFolderThatDoesNotExistStaysDisabled)
+{
+  ASSERT_TRUE(Settings()->SetString(CSettings::SETTING_SUBTITLES_CUSTOMPATH,
+                                    URIUtils::AddFileToFolder(m_folder, "Missing\\")));
+
+  std::vector<std::string> subtitles;
+  CUtil::ScanForExternalSubtitles(m_video, subtitles);
+
+  EXPECT_EQ(-1, CMediaSettings::GetInstance().GetAdditionalSubtitleDirectoryChecked());
+}
+
+TEST_F(TestCustomSubtitleFolder, AFolderThatExistsIsSearched)
+{
+  const std::string subtitles{URIUtils::AddFileToFolder(m_folder, "AlternateCaptions\\")};
+  ASSERT_TRUE(XFILE::CDirectory::Create(subtitles));
+  XFILE::CFile file;
+  ASSERT_TRUE(file.OpenForWrite(URIUtils::AddFileToFolder(subtitles, "Film.en.srt"), true));
+  file.Close();
+  ASSERT_TRUE(Settings()->SetString(CSettings::SETTING_SUBTITLES_CUSTOMPATH, subtitles));
+
+  std::vector<std::string> found;
+  CUtil::ScanForExternalSubtitles(m_video, found);
+
+  EXPECT_EQ(1, CMediaSettings::GetInstance().GetAdditionalSubtitleDirectoryChecked());
+  EXPECT_EQ(1U, found.size());
 }

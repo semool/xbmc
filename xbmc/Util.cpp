@@ -37,6 +37,7 @@
 #include "filesystem/File.h"
 #include "filesystem/SpecialProtocol.h"
 #include "utils/StringUtils.h"
+#include "utils/URIPolicy.h"
 #include "utils/URIUtils.h"
 #include "utils/log.h"
 
@@ -343,8 +344,9 @@ std::string CUtil::GetTitleFromPath(const CURL& url, bool bIsFolder /* = false *
   URIUtils::RemoveSlashAtEnd(path);
   // A VFS path carries percent escapes; a local path and the friendly names assigned
   // below do not, so only this one is decoded.
-  std::string strFilename =
-      URIUtils::IsURL(path) ? URIUtils::GetDecodedFileName(path) : URIUtils::GetFileName(path);
+  std::string strFilename = URIUtils::IsURL(path) || url.IsLosslessURI()
+                                ? URIUtils::GetDecodedFileName(path)
+                                : URIUtils::GetFileName(path);
 
 #ifdef HAS_UPNP
   // UPNP
@@ -1034,6 +1036,8 @@ std::string CUtil::MakeLegalPath(const std::string& strPathAndFile, LegalPath Le
 
 std::string CUtil::ValidatePath(std::string path, bool bFixDoubleSlashes /* = false */)
 {
+  if (URIPolicy::IsURILocation(path) && !URIPolicy::UsesLegacyURL(path))
+    return path;
 
   // Don't do any stuff on URLs containing %-characters or protocols that embed
   // filenames. NOTE: Don't use IsInZip or IsInRar here since it will infinitely
@@ -1922,6 +1926,14 @@ void CUtil::GetVideoBasePathAndFileName(const std::string& videoPath,
                                         std::string& basePath,
                                         std::string& videoFileName)
 {
+  const CURL location{videoPath};
+  if (!location.SupportsPathOperations())
+  {
+    basePath.clear();
+    videoFileName.clear();
+    return;
+  }
+
   if (URIUtils::IsOpticalMediaFile(videoPath) || URIUtils::IsBlurayPath(videoPath))
   {
     const std::string path{URIUtils::IsBlurayPath(videoPath) ? URIUtils::GetDiscFile(videoPath)
@@ -1944,11 +1956,17 @@ void CUtil::GetVideoBasePathAndFileName(const std::string& videoPath,
   }
   else
   {
-    videoFileName = URIUtils::ReplaceExtension(URIUtils::GetFileName(videoPath), "");
-    CURL url(videoPath);
-    // Strip URL options (e.g., query/fragment) before computing the parent path
-    url.SetOptions("");
-    basePath = URIUtils::GetParentPath(url.Get());
+    videoFileName = URIUtils::GetFileName(URIUtils::ReplaceExtension(videoPath, ""));
+    CURL url{location};
+    // Strip non-identity URL options before computing the parent path.
+    if (url.IsLosslessURI())
+      basePath = URIUtils::GetParentPath(url.PreservesQueryIdentity() ? url.Get()
+                                                                      : url.GetWithoutOptions());
+    else
+    {
+      url.SetOptions("");
+      basePath = URIUtils::GetParentPath(url.Get());
+    }
   }
 }
 
@@ -2156,8 +2174,8 @@ void CUtil::ScanForExternalSubtitles(const std::string& strMovie, std::vector<st
       CLog::Log(LOGINFO, "CUtil::CacheSubtitles: disabling alternate subtitle directory for this session, it's nonexistent");
       CMediaSettings::GetInstance().SetAdditionalSubtitleDirectoryChecked(-1); // disabled
     }
-
-    CMediaSettings::GetInstance().SetAdditionalSubtitleDirectoryChecked(1);
+    else
+      CMediaSettings::GetInstance().SetAdditionalSubtitleDirectoryChecked(1);
   }
 
   std::vector<std::string> strLookInPaths;
