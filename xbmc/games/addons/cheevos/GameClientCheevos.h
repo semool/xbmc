@@ -17,6 +17,7 @@
 class CCriticalSection;
 
 struct AddonInstance_Game;
+struct game_rc_achievement;
 struct game_rc_achievement_challenge;
 struct game_rc_achievement_sets;
 struct game_rc_achievement_progress;
@@ -36,6 +37,7 @@ namespace GAME
 
 class CAchievementRuntime;
 class CGameClient;
+struct AchievementInfo;
 
 /*!
  * \ingroup games
@@ -61,8 +63,7 @@ public:
   void OnGameLoaded(const game_rc_game_loaded& data);
   void OnAchievementTriggered(const game_rc_achievement_triggered& data);
   static void OnAchievementTriggered(const game_rc_achievement_triggered& data,
-                                     CAchievementRuntime& runtime,
-                                     bool encoreModeEnabled);
+                                     CAchievementRuntime& runtime);
   void OnGameCompleted(const std::string& title, bool hardcore);
   void OnRichPresenceUpdated(const std::string& evaluation);
   void OnLoginResult(const game_rc_login_result& data);
@@ -93,6 +94,16 @@ public:
   //@}
 
   /*!
+   * \brief Set whether a loaded achievement starts out earned
+   *
+   * Encore re-arms everything earned before, so an encore run starts with
+   * nothing earned and keeps only the date of the earlier unlock.
+   */
+  static void SetEarned(AchievementInfo& info,
+                        const game_rc_achievement& achievement,
+                        bool encoreModeEnabled);
+
+  /*!
    * \brief Drop the published state when the game closes
    *
    * The next game's state doesn't arrive until the add-on has identified it,
@@ -114,6 +125,23 @@ public:
    * \return True if the client accepted them
    */
   bool SendCredentials();
+
+  /*!
+   * \brief Whether achievements are earned in hardcore in the game being played
+   *
+   * The setting is the player's choice for every game. This is what holds for
+   * this one, which is casual if its emulator refused hardcore or the session
+   * resumed from a save state.
+   */
+  bool IsHardcoreActive() const { return m_hardcoreEnabled; }
+
+  /*!
+   * \brief Leave hardcore for the rest of this game
+   *
+   * RetroAchievements requires a session resumed from a save state to be
+   * casual. The setting is left alone, so the next game starts in hardcore.
+   */
+  void LeaveHardcore();
 
   /*!
    * \brief Watch the achievement modes for as long as the client is loaded
@@ -151,10 +179,11 @@ private:
   bool SetHardcoreEnabled(bool enabled);
 
   /*!
-   * \brief Turn hardcore off after the client wouldn't take it
+   * \brief Leave hardcore for this game after the client wouldn't take it
    *
    * The client plays on in casual mode, so Kodi stops enforcing hardcore and
-   * stops saying it is on.
+   * stops saying it is on. The setting is left alone: another emulator can
+   * still take it.
    */
   void DropHardcore();
 
@@ -203,9 +232,17 @@ private:
   //! write it on Kodi's.
   std::atomic<bool> m_encoreModeEnabled{false};
 
+  //! The encore setting as last seen, so a change made during a game is
+  //! announced once. Atomic for the same reason as m_hardcoreEnabled.
+  std::atomic<bool> m_encoreSetting{false};
+
   //! Hardcore as last applied to this client. Atomic because the setting can
   //! change on the player's thread as well as Kodi's.
   std::atomic<bool> m_hardcoreEnabled{false};
+
+  //! Whether this game left hardcore, refused or resumed from a save state. It
+  //! stays casual until the player turns the setting off and on again.
+  std::atomic<bool> m_hardcoreLeft{false};
 
   //! The game-start toast until it is shown. Only touched on the add-on's
   //! thread.
