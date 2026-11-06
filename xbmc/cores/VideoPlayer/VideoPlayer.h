@@ -302,6 +302,7 @@ public:
   bool CanSeek() const override;
   void Seek(bool bPlus, bool bLargeStep, bool bChapterOverride) override;
   bool SeekScene(Direction seekDirection) override;
+  void SeekChapterOrSceneOrBigStep(Direction direction) override;
   void SeekPercentage(float iPercent) override;
   float GetCachePercentage() const override;
 
@@ -536,6 +537,7 @@ protected:
   void UpdateContentState();
 
   void UpdateFileItemStreamDetails(CFileItem& item, UpdateStreamDetails update);
+  void SaveInputStreamState();
   int GetPreviousChapter();
   std::optional<std::chrono::milliseconds> GetChapterPosMs(int chapterIdx = -1) const;
   // Translate a 1-based visible chapter number (as seen by GetChapter()/GetChapterCount())
@@ -567,6 +569,11 @@ protected:
                                                              SeekStep step);
   std::optional<SeekCandidate> GetChapterSeekCandidate(int64_t time, Direction direction);
   std::optional<SeekCandidate> GetBookmarkSeekCandidate(int64_t time, Direction direction);
+  std::optional<SeekCandidate> GetSceneSeekCandidate(int64_t time, Direction direction);
+  void SeekToNearestTarget(Direction direction,
+                           SeekStep step,
+                           bool includeChapters,
+                           bool includeScenes);
   void ExecuteTimeSeek(int64_t target, Direction direction, bool accurate);
   bool EvaluateIsStreaming() const;
 

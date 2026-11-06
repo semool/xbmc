@@ -1740,17 +1740,11 @@ void CActiveAE::ClearDiscardedBuffers()
 
 void CActiveAE::SStopSound(CActiveAESound *sound)
 {
-  std::list<SoundState>::iterator it;
-  for (it=m_sounds_playing.begin(); it!=m_sounds_playing.end(); ++it)
-  {
-    if (it->sound == sound)
-    {
-      if (sound->GetChannel() != AE_CH_NULL)
-        m_aeGUISoundForce = false;
-      m_sounds_playing.erase(it);
-      return;
-    }
-  }
+  // A sound played again before it finished is in the list once for each play.
+  const auto removed = std::erase_if(m_sounds_playing, [sound](const SoundState& state)
+                                     { return state.sound == sound; });
+  if (removed > 0 && sound->GetChannel() != AE_CH_NULL)
+    m_aeGUISoundForce = false;
 }
 
 void CActiveAE::DiscardSound(CActiveAESound *sound)
@@ -2672,9 +2666,11 @@ CSampleBuffer* CActiveAE::SyncStream(CActiveAEStream *stream)
     }
   }
 
-  // While the error is averaged, samples that will not be skipped stay audible.
+  // While the error is averaged, samples that will not be skipped stay audible. Not in passthrough,
+  // where the correction that follows interrupts the bitstream the receiver just locked on to.
   double errorSoFar{0.0};
-  const bool audible{stream->m_syncError.GetSoFar(errorSoFar) && keepAudible(errorSoFar)};
+  const bool audible{m_mode != MODE_RAW && stream->m_syncError.GetSoFar(errorSoFar) &&
+                     keepAudible(errorSoFar)};
   if (stream->m_syncState == CAESyncInfo::AESyncState::SYNC_MUTE && !audible)
   {
     CSampleBuffer *buf = stream->m_processingBuffers->m_outputSamples.front();
