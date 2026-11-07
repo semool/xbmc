@@ -203,6 +203,7 @@ class CAdvancedSettings : public ISettingCallback, public ISettingsHandler
     bool m_DXVACheckCompatibility;
     bool m_DXVACheckCompatibilityPresent;
     int  m_videoFpsDetect;
+    float m_gamesPacingMarginMs;
     float m_maxTempo;
     bool m_videoPreferStereoStream = false;
 
@@ -307,6 +308,7 @@ class CAdvancedSettings : public ISettingCallback, public ISettingsHandler
     bool m_caseSensitiveLocalArtMatch{true};
     int m_minimumEpisodePlaylistDuration; // seconds
     bool m_disableEpisodeRanges{false};
+    bool m_parseBlurayProjectFile{true};
     bool m_bNoRemoteArtWithLocalScraper{false};
     bool m_ignoreFolderNamesInArchives{true};
 

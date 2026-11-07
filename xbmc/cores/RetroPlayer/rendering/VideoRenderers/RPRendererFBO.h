@@ -95,58 +95,18 @@ protected:
   };
 
   // Implementation of CRPBaseRenderer
-  void RenderInternal(bool clear, uint8_t alpha) override;
+  void RenderInternal(uint8_t alpha) override;
   void FlushInternal() override;
-
-  /*!
-   * \brief Set the entire backbuffer to black
-   */
-  void ClearBackBuffer();
-
-  /*!
-   * \brief Draw black bars around the video quad
-   *
-   * This is more efficient than glClear() since it only sets pixels to
-   * black that aren't going to be overwritten by the game.
-   */
-  void DrawBlackBars();
 
   virtual void Render(uint8_t alpha);
 
   std::map<CRenderBufferFBO*, std::unique_ptr<RenderBufferTextures>> m_RBTexturesMap;
 
-  struct FrameGeometry
-  {
-    unsigned int frameWidth{0};
-    unsigned int frameHeight{0};
-    unsigned int textureWidth{0};
-    unsigned int textureHeight{0};
-    CRect sourceRect;
-    CRect samplingRect;
-    bool bottomLeftOrigin{false};
-
-    bool operator==(const FrameGeometry& rhs) const
-    {
-      return frameWidth == rhs.frameWidth && frameHeight == rhs.frameHeight &&
-             textureWidth == rhs.textureWidth && textureHeight == rhs.textureHeight &&
-             sourceRect == rhs.sourceRect && samplingRect == rhs.samplingRect &&
-             bottomLeftOrigin == rhs.bottomLeftOrigin;
-    }
-    bool operator!=(const FrameGeometry& rhs) const { return !(*this == rhs); }
-  };
-
-  FrameGeometry m_loggedGeometry;
-  bool m_loggedHardwarePresentation{false};
-
   GLuint m_mainVAO;
   GLuint m_mainVertexVBO;
   GLuint m_mainIndexVBO;
 
-  GLuint m_blackbarsVAO;
-  GLuint m_blackbarsVertexVBO;
-
   const GLenum m_textureTarget = GL_TEXTURE_2D;
-  float m_clearColor = 0.0f;
 };
 #endif
 } // namespace RETRO

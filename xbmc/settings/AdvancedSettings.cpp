@@ -224,6 +224,7 @@ void CAdvancedSettings::Initialize()
   m_DXVACheckCompatibility = false;
   m_DXVACheckCompatibilityPresent = false;
   m_videoFpsDetect = 1;
+  m_gamesPacingMarginMs = 2.5f;
   m_maxTempo = 1.55f;
   m_videoPreferStereoStream = false;
 
@@ -403,6 +404,7 @@ void CAdvancedSettings::Initialize()
   m_iVideoLibraryDateAdded = 1; // prefer mtime over ctime and current time
   m_minimumEpisodePlaylistDuration = 5 * 60; // 5 minutes
   m_disableEpisodeRanges = false;
+  m_parseBlurayProjectFile = true;
 
   m_caseSensitiveLocalArtMatch = true; // case sensitive local art matching
   m_bNoRemoteArtWithLocalScraper =
@@ -871,6 +873,10 @@ void CAdvancedSettings::ParseSettingsFile(const std::string &file)
     }
   }
 
+  pElement = pRootElement->FirstChildElement("games");
+  if (pElement)
+    XMLUtils::GetFloat(pElement, "pacingmargin", m_gamesPacingMarginMs, 0.0f, 10.0f);
+
   pElement = pRootElement->FirstChildElement("musiclibrary");
   if (pElement)
   {
@@ -913,6 +919,7 @@ void CAdvancedSettings::ParseSettingsFile(const std::string &file)
     XMLUtils::GetBoolean(pElement, "casesensitivelocalartmatch", m_caseSensitiveLocalArtMatch);
     XMLUtils::GetInt(pElement, "minimumepisodeplaylistduration", m_minimumEpisodePlaylistDuration);
     XMLUtils::GetBoolean(pElement, "disableepisoderanges", m_disableEpisodeRanges);
+    XMLUtils::GetBoolean(pElement, "parseblurayprojectfile", m_parseBlurayProjectFile);
     XMLUtils::GetBoolean(pElement, "noremoteartwithlocalscraper", m_bNoRemoteArtWithLocalScraper);
     XMLUtils::GetBoolean(pElement, "ignorefoldernamesinarchives", m_ignoreFolderNamesInArchives);
   }

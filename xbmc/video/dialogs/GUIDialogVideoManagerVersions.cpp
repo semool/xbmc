@@ -20,7 +20,6 @@
 #include "dialogs/GUIDialogSelect.h"
 #include "dialogs/GUIDialogYesNo.h"
 #include "filesystem/DiscDirectoryHelper.h"
-#include "filesystem/StackDirectory.h"
 #include "guilib/GUIComponent.h"
 #include "guilib/GUIWindowManager.h"
 #include "media/MediaType.h"
@@ -41,9 +40,12 @@
 #include "video/guilib/VideoGUIUtils.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <memory>
 #include <optional>
+#include <ranges>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -726,27 +728,12 @@ std::pair<VersionConversionResult, int> CGUIDialogVideoManagerVersions::ConvertT
   // Must be retrieved before the conversion, which reassigns the file to the target movie.
   const int idFile{videoDb.GetFileIdByMovie(sourceDbId)};
 
-  // Preserve streamdetails if bluray playlist, or a stack containing them
+  // For the log, as the conversion deletes the source movie
   CFileItem sourceItem;
-  bool isSourceBluray{false};
-  if (videoDb.GetDetailsByTypeAndId(sourceItem, itemType, sourceDbId))
-  {
-    if (URIUtils::IsStack(sourceItem.GetDynPath()))
-    {
-      std::vector<std::string> paths;
-      XFILE::CStackDirectory::GetPaths(sourceItem.GetDynPath(), paths);
-      isSourceBluray = std::ranges::any_of(paths, [](const std::string& path)
-                                           { return URIUtils::IsBlurayPath(path); });
-    }
-    else
-      isSourceBluray = sourceItem.IsBluray();
-  }
-  const DeleteMovieCascadeAction cascadeAction{
-      isSourceBluray ? DeleteMovieCascadeAction::ALL_ASSETS_NOT_STREAMDETAILS
-                     : DeleteMovieCascadeAction::ALL_ASSETS};
+  videoDb.GetDetailsByTypeAndId(sourceItem, itemType, sourceDbId);
 
   if (!videoDb.ConvertVideoToVersion(itemType, sourceDbId, targetDbId, versionTypeId,
-                                     VideoAssetType::VERSION, cascadeAction))
+                                     VideoAssetType::VERSION))
   {
     CLog::LogF(LOGERROR, "Failed to convert movie id {} into a version of movie id {}", sourceDbId,
                targetDbId);
@@ -797,9 +784,88 @@ bool CGUIDialogVideoManagerVersions::GetAllOtherMovies(const std::shared_ptr<CFi
   return true;
 }
 
+namespace
+{
+/*!
+ * \brief Without the user to choose among several similar movies, those in the folder of the item
+ * are taken to be its other discs or copies, and made one movie.
+ * \param[in] item the movie that is to become a version of another
+ * \param[in,out] list the similar movies, left with just the one those beside the item now are.
+ * Left as it was when none is beside it.
+ * \param[in] videodb database connection to use
+ * \return false if making them one movie failed
+ */
+bool MergeMoviesBeside(const CFileItem& item, CFileItemList& list, CVideoDatabase& videodb)
+{
+  // A stack plays its discs in turn, so isn't a copy of any of them
+  const std::string& file{item.GetVideoInfoTag()->m_strFileNameAndPath};
+  if (URIUtils::IsStack(file))
+    return true;
+
+  // The folder above any "Disc n" folder, which holds all the discs of a movie
+  const auto movieFolder{[](const std::string& path)
+                         { return CFileItem{path, false}.GetBaseMoviePath(true); }};
+  const std::string folder{movieFolder(file)};
+
+  std::vector<std::shared_ptr<CFileItem>> beside;
+  for (const auto& movie : list)
+  {
+    const std::string& movieFile{movie->GetVideoInfoTag()->m_strFileNameAndPath};
+    if (!URIUtils::IsStack(movieFile) && URIUtils::PathEquals(movieFolder(movieFile), folder, true))
+      beside.emplace_back(movie);
+  }
+  if (beside.empty())
+    return true;
+
+  // The candidates were only compared with the item, which may lack the kind of id they differ by
+  for (auto first = beside.cbegin(); first != beside.cend(); ++first)
+  {
+    for (auto second = first + 1; second != beside.cend(); ++second)
+    {
+      if ((*first)->GetVideoInfoTag()->HasConflictingUniqueID(*(*second)->GetVideoInfoTag()))
+      {
+        CLog::LogF(LOGINFO, "Automated video version creation stopped by conflicting unique ids");
+        return true;
+      }
+    }
+  }
+
+  // Of the movies already in the library, the one of the lowest disc is kept and the others join
+  // it, as does the item. The item has just been added from its scraper or nfo, while they may
+  // hold what the user set on them, which a movie made a version loses.
+  std::ranges::sort(beside, {},
+                    [](const std::shared_ptr<CFileItem>& movie)
+                    {
+                      const CVideoInfoTag& tag{*movie->GetVideoInfoTag()};
+                      const std::string disc{
+                          CUtil::GetPartNumberFromPath(tag.m_strFileNameAndPath)};
+                      return std::make_tuple(disc.empty(), std::atoi(disc.c_str()), tag.m_iDbId);
+                    });
+  const int targetDbId{beside.front()->GetVideoInfoTag()->m_iDbId};
+  for (const auto& movie : beside | std::views::drop(1))
+  {
+    const int dbId{movie->GetVideoInfoTag()->m_iDbId};
+    if (!videodb.ConvertVideoToVersion(VideoDbContentType::MOVIES, dbId, targetDbId, -1,
+                                       VideoAssetType::VERSION))
+    {
+      CLog::LogF(LOGERROR, "Failed to convert movie id {} into a version of movie id {}", dbId,
+                 targetDbId);
+      return false;
+    }
+    CLog::LogF(LOGDEBUG, "Converted movie id {} into a version of movie id {} beside it in '{}'",
+               dbId, targetDbId, CURL::GetRedacted(folder));
+  }
+
+  list.Clear();
+  list.Add(beside.front());
+  return true;
+}
+} // namespace
+
 std::pair<VersionConversionResult, int> CGUIDialogVideoManagerVersions::ProcessVideoVersion(
     VideoDbContentType itemType,
     int dbId,
+    CVideoDatabase& videodb,
     int targetDbId /* = -1 */,
     bool canBecomeDefault /* = true */)
 {
@@ -813,13 +879,6 @@ std::pair<VersionConversionResult, int> CGUIDialogVideoManagerVersions::ProcessV
   {
     CLog::LogF(LOGDEBUG, "Version creation disabled by settings");
     return {VersionConversionResult::NOT_ALLOWED, NO_VERSION};
-  }
-
-  CVideoDatabase videodb;
-  if (!videodb.Open())
-  {
-    CLog::LogF(LOGERROR, "Failed to open video database!");
-    return {VersionConversionResult::FAILED, NO_VERSION};
   }
 
   CFileItem item;
@@ -924,6 +983,9 @@ std::pair<VersionConversionResult, int> CGUIDialogVideoManagerVersions::ProcessV
       CLog::LogF(LOGINFO, "Automated video version creation stopped by conflicting unique ids");
       return {VersionConversionResult::NOT_NEEDED, NO_VERSION};
     }
+
+    if (list.Size() > 1 && !MergeMoviesBeside(item, list, videodb))
+      return {VersionConversionResult::FAILED, NO_VERSION};
   }
 
   return ChooseVideoAndConvertToVideoVersion(list, itemType, dbId, videodb, MediaRole::NewVersion,
@@ -1045,8 +1107,7 @@ bool CGUIDialogVideoManagerVersions::AddVideoVersionFilePicker()
           RemovePartNumberFromTitle(m_videoAsset->GetVideoInfoTag()->m_iDbId,
                                     m_videoAsset->GetVideoContentType(), m_database);
           return m_database.ConvertVideoToVersion(itemType, newAsset.m_idMedia, dbId,
-                                                  idNewVideoVersion, VideoAssetType::VERSION,
-                                                  DeleteMovieCascadeAction::ALL_ASSETS);
+                                                  idNewVideoVersion, VideoAssetType::VERSION);
         }
         else
         {
@@ -1108,14 +1169,9 @@ bool CGUIDialogVideoManagerVersions::AddSimilarMovieAsVersion(
   }
 
   // Choose playlist for blurays, unless one has already been determined
-  DeleteMovieCascadeAction cascadeAction{DeleteMovieCascadeAction::ALL_ASSETS};
-  if (itemMovie->IsBluray())
-  {
-    if (!URIUtils::IsBlurayPath(itemMovie->GetDynPath()) &&
-        !ChoosePlaylist(itemMovie, ReplaceExistingFile::YES))
-      return false;
-    cascadeAction = DeleteMovieCascadeAction::ALL_ASSETS_NOT_STREAMDETAILS;
-  }
+  if (itemMovie->IsBluray() && !URIUtils::IsBlurayPath(itemMovie->GetDynPath()) &&
+      !ChoosePlaylist(itemMovie, ReplaceExistingFile::YES))
+    return false;
 
   // choose a video version type for the video
   const int idVideoVersion{ChooseVideoAsset(itemMovie, VideoAssetType::VERSION, "")};
@@ -1129,7 +1185,7 @@ bool CGUIDialogVideoManagerVersions::AddSimilarMovieAsVersion(
   const int sourceDbId{itemMovie->GetVideoInfoTag()->m_iDbId};
   const int targetDbId{m_videoAsset->GetVideoInfoTag()->m_iDbId};
   return m_database.ConvertVideoToVersion(VideoDbContentType::MOVIES, sourceDbId, targetDbId,
-                                          idVideoVersion, VideoAssetType::VERSION, cascadeAction);
+                                          idVideoVersion, VideoAssetType::VERSION);
 }
 
 void CGUIDialogVideoManagerVersions::PostProcessList(CFileItemList& list, int dbId)

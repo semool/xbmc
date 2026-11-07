@@ -131,6 +131,7 @@ public:
   void* stream; // pointer or integer, identifying stream playing. if it changes stream changed
   int changes; // remembered counter from stream to track codec changes
   bool inited;
+  bool demuxDisabled; // disabled in the demuxer since it was opened
   unsigned int packets;
   IDVDStreamPlayer::ESyncState syncState;
   double starttime;
@@ -169,6 +170,7 @@ public:
     stream = NULL;
     changes = 0;
     inited = false;
+    demuxDisabled = false;
     packets = 0;
     syncState = IDVDStreamPlayer::SYNC_STARTING;
     starttime = DVD_NOPTS_VALUE;
@@ -220,6 +222,11 @@ struct SelectionStream
   AVDOVIDecoderConfigurationRecord dovi{};
   uint32_t fpsScale{0};
   uint32_t fpsRate{0};
+
+  bool IsCurrent(const CCurrentStream& current) const
+  {
+    return demuxerId == current.demuxerId && id == current.id && source == current.source;
+  }
 };
 
 class CSelectionStreams
@@ -295,6 +302,7 @@ public:
   bool CanSeek() const override;
   void Seek(bool bPlus, bool bLargeStep, bool bChapterOverride) override;
   bool SeekScene(Direction seekDirection) override;
+  void SeekChapterOrSceneOrBigStep(Direction direction) override;
   void SeekPercentage(float iPercent) override;
   float GetCachePercentage() const override;
 
@@ -370,6 +378,7 @@ public:
 
   void FrameMove() override;
   void Render(bool clear, uint32_t alpha = 255, bool gui = true) override;
+  bool CompositeVideoCapture(KODI::RENDERING::CAPTURE::CaptureResult& result) override;
   void FlushRenderer() override;
   void SetRenderViewMode(int mode, float zoom, float par, float shift, bool stretch) override;
   float GetRenderAspectRatio() const override;
@@ -452,6 +461,7 @@ protected:
   void SetEnableStream(CCurrentStream& current, bool isEnabled);
 
   void SetSubtitleVisibleInternal(bool bVisible);
+  void ReopenSubtitleStream(const SelectionStream& stream);
 
   enum SubtitleChange
   {
@@ -487,7 +497,9 @@ protected:
   void HandlePlaySpeed();
   bool IsInMenuInternal() const;
   void SynchronizeDemuxer();
+  bool IsNearStreamEnd(std::chrono::milliseconds time) const;
   void QueueAutoSceneSkip(std::chrono::milliseconds seekTime);
+  void MarkCommBreakSkipped(const EDL::Edit& edit, std::chrono::milliseconds seekTime);
   void CheckAutoSceneSkip();
   bool CheckContinuity(CCurrentStream& current, DemuxPacket* pPacket);
   bool CheckSceneSkip(const CCurrentStream& current);
@@ -512,6 +524,7 @@ protected:
   void UpdateHasVideoAudio();
 
   void UpdatePlayState(double timeout);
+  double GetCaughtUpClock();
   void GetGeneralInfo(std::string& strVideoInfo);
   int64_t GetUpdatedTime();
   int64_t GetTime() const;
@@ -554,6 +567,11 @@ protected:
                                                              SeekStep step);
   std::optional<SeekCandidate> GetChapterSeekCandidate(int64_t time, Direction direction);
   std::optional<SeekCandidate> GetBookmarkSeekCandidate(int64_t time, Direction direction);
+  std::optional<SeekCandidate> GetSceneSeekCandidate(int64_t time, Direction direction);
+  void SeekToNearestTarget(Direction direction,
+                           SeekStep step,
+                           bool includeChapters,
+                           bool includeScenes);
   void ExecuteTimeSeek(int64_t target, Direction direction, bool accurate);
   bool EvaluateIsStreaming() const;
 
@@ -658,6 +676,7 @@ protected:
   } m_dvd;
 
   SPlayerState m_State;
+  double m_stateClock{0.0}; // GetCaughtUpClock() when m_State.time was set
   mutable CCriticalSection m_StateSection;
   XbmcThreads::EndTime<> m_syncTimer;
 

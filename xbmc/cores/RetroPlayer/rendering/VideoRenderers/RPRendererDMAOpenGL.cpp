@@ -80,12 +80,18 @@ void CRPRendererDMAOpenGL::Render(uint8_t alpha)
     }
 
     const auto it = m_RBTexturesMap.find(renderBuffer);
-    if (it != m_RBTexturesMap.end())
+    if (it != m_RBTexturesMap.end() &&
+        it->second->sourceTexture->GetTextureID() == renderBuffer->TextureID() &&
+        it->second->sourceTexture->GetWidth() == renderBuffer->GetWidth() &&
+        it->second->sourceTexture->GetHeight() == renderBuffer->GetHeight())
     {
       rbTextures = it->second.get();
     }
     else
     {
+      if (it != m_RBTexturesMap.end())
+        m_RBTexturesMap.erase(it);
+
       rbTextures = new RenderBufferTextures{
           // Source texture
           std::make_shared<SHADER::CShaderTextureGLRef>(
@@ -112,16 +118,19 @@ void CRPRendererDMAOpenGL::Render(uint8_t alpha)
     glTexParameteri(m_textureTarget, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(m_textureTarget, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-    if (!m_shaderPreset->RenderUpdate(*sourceTexture, *targetTexture))
+    if (m_shaderPreset->RenderUpdate(*sourceTexture, *targetTexture))
+    {
+      glActiveTexture(GL_TEXTURE0); // GUI shader samples from texture unit 0
+      glBindTexture(m_textureTarget, targetTexture->GetTextureID());
+    }
+    else
     {
       m_bShadersNeedUpdate = false;
       m_bUseShaderPreset = false;
     }
-
-    glActiveTexture(GL_TEXTURE0); // GUI shader samples from texture unit 0
-    glBindTexture(m_textureTarget, targetTexture->GetTextureID());
   }
-  else
+
+  if (!m_bUseShaderPreset)
   {
     GLint filter = GL_NEAREST;
     if (GetRenderSettings().VideoSettings().GetScalingMethod() == SCALINGMETHOD::LINEAR)

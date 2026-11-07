@@ -20,6 +20,11 @@ extern "C"
 
 namespace KODI
 {
+namespace RENDERING::CAPTURE
+{
+struct ReadbackBuffer;
+}
+
 namespace RETRO
 {
 class CRenderBufferManager;
@@ -166,6 +171,16 @@ public:
   }
 
   /*!
+   * \brief Read a frame taken by CaptureClientFrame() into system memory
+   *
+   * Call between BeginClientFrame() and EndClientFrame().
+   */
+  virtual bool ReadCapture(IRenderBuffer* buffer, RENDERING::CAPTURE::ReadbackBuffer& pixels)
+  {
+    return false;
+  }
+
+  /*!
    * \brief Release resources tied to the rendering context
    *
    * This function is called when the render context is being destroyed.
@@ -175,6 +190,11 @@ public:
    * Implementations must bind the owning context and restore the caller's binding.
    */
   virtual void DestroyContext() {}
+
+  /*!
+   * \brief Submit outstanding GUI sampling before recycling or destroying captures
+   */
+  virtual void FlushRendered() {}
 };
 } // namespace RETRO
 } // namespace KODI

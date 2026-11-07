@@ -124,6 +124,19 @@ namespace KODI::VIDEO
                            bool fetchEpisodes = true,
                            CGUIDialogProgress* pDlgProgress = nullptr);
 
+    /*! \brief Look the videos up with these scrapers, as CVideoDatabase::GetScraperForPath()
+     cached them, so that the details already read with them are read from their cache.
+     */
+    void UseScrapers(const CVideoDatabase::ScraperCache& scrapers)
+    {
+      m_scraperCache.insert(scrapers.begin(), scrapers.end());
+    }
+
+    /*! \brief Look the movies or tv shows up by these ids with a python scraper, rather than search
+     for them.
+     */
+    void LookUpBy(const ADDON::CScraper::UniqueIDs& uniqueIDs) { m_uniqueIDs = uniqueIDs; }
+
     static bool DownloadFailed(CGUIDialogProgress* pDlgProgress);
 
     /*! \brief Update the set information from a SET.NFO in the Movie Set Information Folder
@@ -274,6 +287,8 @@ namespace KODI::VIDEO
      A disc rip or archive is not anchored in the folder that was scanned but under a
      bluray:// or zip:// path of its own. Those are queued too, otherwise the clean never
      looks at them and media removed with the disc stays in the library.
+     The video extras folders of the directory are queued too, as the scan adds their
+     extras without scanning them as directories of their own.
      \param directory the directory that was scanned
      */
     void AddPathToClean(const std::string& directory);
@@ -308,8 +323,10 @@ namespace KODI::VIDEO
     bool ProcessItemByVideoInfoTag(const CFileItem *item, EPISODELIST &episodeList);
 
     bool AddVideoExtras(CFileItemList& items, ADDON::ContentType content, const std::string& path);
-    static std::pair<VersionConversionResult, int> ProcessVideoVersion(
-        VideoDbContentType itemType, int dbId, int targetDbId = -1, bool canBecomeDefault = true);
+    std::pair<VersionConversionResult, int> ProcessVideoVersion(VideoDbContentType itemType,
+                                                                int dbId,
+                                                                int targetDbId = -1,
+                                                                bool canBecomeDefault = true);
     static void RemovePartNumberFromTitle(int dbId,
                                           VideoDbContentType itemType,
                                           CVideoDatabase& db);
@@ -335,8 +352,15 @@ namespace KODI::VIDEO
     bool m_scanAll;
     bool m_scanSubtree{false};
 
+    //! Lookups so far that failed, rather than finding nothing. A directory in which one failed
+    //! isn't hashed, so that the next scan tries it again.
+    unsigned int m_failedLookups{0};
+
     SimilarVideoScanAction m_similarVideoAction{SimilarVideoScanAction::NONE};
     bool m_ignoreVideoExtras{false};
+
+    //! The ids RetrieveVideoInfo() looks movies and tv shows up by, where it would otherwise search
+    ADDON::CScraper::UniqueIDs m_uniqueIDs;
 
     //! Whether the folder a movie is in names it (the scraper's "movies are in separate folders")
     bool m_useFolderNames{false};

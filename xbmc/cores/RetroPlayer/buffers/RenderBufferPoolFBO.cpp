@@ -21,9 +21,13 @@
 #include "RenderBufferPoolFBO.h"
 
 #include "RenderBufferFBO.h"
+#include "ServiceBroker.h"
 #include "cores/RetroPlayer/rendering/RenderContext.h"
 #include "cores/RetroPlayer/rendering/VideoRenderers/RPRendererFBO.h"
 #include "cores/RetroPlayer/rendering/contexts/IHwRenderingContext.h"
+#include "messaging/ApplicationMessenger.h"
+#include "rendering/capture/CaptureReadback.h"
+#include "threads/SingleLock.h"
 #include "utils/log.h"
 
 #include <utility>
@@ -37,8 +41,10 @@ CRenderBufferPoolFBO::CRenderBufferPoolFBO(CRenderContext& context)
 }
 
 CRenderBufferPoolFBO::CRenderBufferPoolFBO(CRenderContext& context,
-                                           std::unique_ptr<IHwRenderingContext> hwContext)
+                                           std::unique_ptr<IHwRenderingContext> hwContext,
+                                           std::shared_ptr<CRenderBufferFBO::Sync> sync)
   : m_context(context),
+    m_sync(std::move(sync)),
     m_hwContext(std::move(hwContext))
 {
 }
@@ -89,9 +95,9 @@ CRenderBufferFBO* CRenderBufferPoolFBO::CreateFBO(CRenderBufferFBO::Type type)
   }
 
   const bool client = type == CRenderBufferFBO::Type::CLIENT;
-  auto buffer = std::make_unique<CRenderBufferFBO>(m_context, client && m_contextProperties.depth,
-                                                   client && m_contextProperties.stencil,
-                                                   m_contextProperties.bottomLeftOrigin, type);
+  auto buffer = std::make_unique<CRenderBufferFBO>(
+      m_context, client && m_contextProperties.depth, client && m_contextProperties.stencil,
+      m_contextProperties.bottomLeftOrigin, type, m_sync);
   m_resources.emplace_back(buffer->m_resources);
   return buffer.release();
 }
@@ -139,6 +145,11 @@ void CRenderBufferPoolFBO::Return(IRenderBuffer* buffer)
   {
     auto lock = fbo->Lock();
     std::unique_lock captureLock(m_captureMutex);
+    if (fbo->m_resources->guiPending)
+    {
+      m_pending.emplace_back(buffer);
+      return;
+    }
     if (fbo->IsCapture() && fbo->TextureID() != 0 && !fbo->m_resources->retired &&
         fbo->TextureWidth() == m_captureWidth && fbo->TextureHeight() == m_captureHeight)
     {
@@ -147,6 +158,84 @@ void CRenderBufferPoolFBO::Return(IRenderBuffer* buffer)
     }
   }
   delete buffer;
+}
+
+void CRenderBufferPoolFBO::MarkRendered(
+    const std::shared_ptr<CRenderBufferFBO::Resources>& resources)
+{
+  std::unique_lock lock(m_rendered->mutex);
+  m_rendered->buffers.emplace_back(resources);
+}
+
+void CRenderBufferPoolFBO::RenderedBuffers::Flush(std::optional<uint64_t> expectedGeneration)
+{
+  std::unique_lock lock(mutex);
+  if (buffers.empty() || (expectedGeneration && *expectedGeneration != generation))
+    return;
+
+  for (const auto& resources : buffers)
+  {
+    resources->guiPending = false;
+
+    if (resources->retired)
+      continue;
+
+    if (resources->rendered)
+      resources->sync->destroy(resources->rendered);
+
+    resources->rendered = resources->sync->fence();
+
+    if (!resources->rendered)
+      resources->retired = true;
+  }
+
+  buffers.front()->sync->flush();
+  buffers.clear();
+  ++generation;
+  submitted.notify_all();
+}
+
+void CRenderBufferPoolFBO::FlushRendered()
+{
+  const auto messenger = CServiceBroker::GetAppMessenger();
+  if (messenger->IsProcessThread())
+    m_rendered->Flush();
+  else
+  {
+    std::unique_lock lock(m_rendered->mutex);
+    if (!m_rendered->buffers.empty())
+    {
+      struct Callback
+      {
+        KODI::MESSAGING::ThreadMessageCallback message;
+        std::shared_ptr<RenderedBuffers> rendered;
+        uint64_t generation;
+      };
+      const uint64_t generation = m_rendered->generation;
+      auto* callback = new Callback{{}, m_rendered, generation};
+      callback->message.userptr = callback;
+      callback->message.callback = [](void* data)
+      {
+        std::unique_ptr<Callback> callback(static_cast<Callback*>(data));
+        callback->rendered->Flush(callback->generation);
+      };
+      messenger->PostMsg(TMSG_CALLBACK, -1, -1, &callback->message);
+
+      // CloseFile() can submit this batch before joining the client thread.
+      // The queued callback owns only the batch state, not the pool or player.
+      CSingleExit exit(m_context.GraphicsMutex());
+      m_rendered->submitted.wait(lock, [&] { return m_rendered->generation != generation; });
+      lock.unlock();
+    }
+  }
+
+  std::vector<std::unique_ptr<IRenderBuffer>> pending;
+  {
+    std::unique_lock lock(m_captureMutex);
+    pending.swap(m_pending);
+  }
+  for (auto& buffer : pending)
+    Return(buffer.release());
 }
 
 void CRenderBufferPoolFBO::CollectBuffers()
@@ -236,11 +325,14 @@ IRenderBuffer* CRenderBufferPoolFBO::CaptureClientFrame(IRenderBuffer* clientBuf
   glGetIntegerv(GL_READ_BUFFER, &prevReadBuffer);
   glReadBuffer(GL_COLOR_ATTACHMENT0);
   glBindFramebuffer(GL_DRAW_FRAMEBUFFER, target->GetCurrentFramebuffer());
+
   // Normalize the drawn rectangle before directional shader filters see it.
   const GLint sourceY0 = client->BottomLeftOrigin() ? height : 0;
   const GLint sourceY1 = client->BottomLeftOrigin() ? 0 : height;
+
   glBlitFramebuffer(0, sourceY0, width, sourceY1, 0, 0, width, height, GL_COLOR_BUFFER_BIT,
                     GL_NEAREST);
+
   const bool ready = target->SetReady();
   glReadBuffer(prevReadBuffer);
   glBindFramebuffer(GL_READ_FRAMEBUFFER, prevRead);
@@ -254,6 +346,57 @@ IRenderBuffer* CRenderBufferPoolFBO::CaptureClientFrame(IRenderBuffer* clientBuf
     return nullptr;
   }
   return target;
+}
+
+bool CRenderBufferPoolFBO::ReadCapture(IRenderBuffer* buffer,
+                                       RENDERING::CAPTURE::ReadbackBuffer& pixels)
+{
+  std::unique_lock lock(m_contextMutex);
+  if (m_clientFrameDepth == 0 || m_clientThread != std::this_thread::get_id() || !buffer)
+    return false;
+
+  // A stream handing over from hardware to software publishes the other pool's buffers
+  if (buffer->GetPool() != this)
+    return false;
+
+  auto* capture = static_cast<CRenderBufferFBO*>(buffer);
+  auto resourcesLock = capture->Lock();
+  if (!capture->IsCapture() || capture->GetCurrentFramebuffer() == 0)
+    return false;
+
+  GLint prevRead = 0;
+  glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &prevRead);
+  glBindFramebuffer(GL_READ_FRAMEBUFFER, capture->GetCurrentFramebuffer());
+  GLint prevReadBuffer = 0;
+  glGetIntegerv(GL_READ_BUFFER, &prevReadBuffer);
+  glReadBuffer(GL_COLOR_ATTACHMENT0);
+
+  // This is the client's context, so its pixel-pack state would apply to the read
+  GLint prevPackBuffer = 0, prevAlignment = 4, prevRowLength = 0, prevSkipRows = 0,
+        prevSkipPixels = 0;
+  glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, &prevPackBuffer);
+  glGetIntegerv(GL_PACK_ALIGNMENT, &prevAlignment);
+  glGetIntegerv(GL_PACK_ROW_LENGTH, &prevRowLength);
+  glGetIntegerv(GL_PACK_SKIP_ROWS, &prevSkipRows);
+  glGetIntegerv(GL_PACK_SKIP_PIXELS, &prevSkipPixels);
+  glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+  glPixelStorei(GL_PACK_ALIGNMENT, 4);
+  glPixelStorei(GL_PACK_ROW_LENGTH, 0);
+  glPixelStorei(GL_PACK_SKIP_ROWS, 0);
+  glPixelStorei(GL_PACK_SKIP_PIXELS, 0);
+
+  // Captures are stored top row first, which is the order glReadPixels returns them in
+  const bool read = RENDERING::CAPTURE::ReadFramebufferRegion(
+      0, 0, capture->GetWidth(), capture->GetHeight(), 8, false, pixels);
+
+  glPixelStorei(GL_PACK_SKIP_PIXELS, prevSkipPixels);
+  glPixelStorei(GL_PACK_SKIP_ROWS, prevSkipRows);
+  glPixelStorei(GL_PACK_ROW_LENGTH, prevRowLength);
+  glPixelStorei(GL_PACK_ALIGNMENT, prevAlignment);
+  glBindBuffer(GL_PIXEL_PACK_BUFFER, static_cast<GLuint>(prevPackBuffer));
+  glReadBuffer(prevReadBuffer);
+  glBindFramebuffer(GL_READ_FRAMEBUFFER, prevRead);
+  return read;
 }
 
 IRenderBuffer* CRenderBufferPoolFBO::GetCaptureBuffer(unsigned int width, unsigned int height)
@@ -277,7 +420,19 @@ void CRenderBufferPoolFBO::DestroyContext()
   std::unique_lock lock(m_contextMutex);
   if (!m_hwContext || !m_hwContext->IsCreated())
     return;
-  if (!m_resources.empty() || m_clientFrameDepth > 0)
+
+  while (m_clientFrameDepth > 0)
+    EndClientFrame();
+
+  FlushRendered();
+
+  for (const auto& resources : m_resources)
+  {
+    std::unique_lock resourceLock(resources->mutex);
+    resources->retired = true;
+  }
+
+  if (!m_resources.empty())
   {
     if (!BeginClientFrame())
     {
