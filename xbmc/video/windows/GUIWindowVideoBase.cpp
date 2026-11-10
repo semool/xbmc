@@ -82,6 +82,7 @@
 #include <algorithm>
 #include <map>
 #include <memory>
+#include <optional>
 #include <ranges>
 #include <string>
 #include <unordered_map>
@@ -141,6 +142,7 @@ bool CGUIWindowVideoBase::OnMessage(CGUIMessage& message)
   switch ( message.GetMessage() )
   {
   case GUI_MSG_WINDOW_DEINIT:
+    m_restartThumbLoader = false;
     if (m_thumbLoader.IsLoading())
       m_thumbLoader.StopThread();
     m_database.Close();
@@ -239,6 +241,25 @@ bool CGUIWindowVideoBase::OnMessage(CGUIMessage& message)
         return CGUIMediaWindow::OnMessage(message);
       }
       break;
+    case GUI_MSG_PLAYBACK_AVSTARTED:
+    {
+      // queued after the player's switch to fullscreen, which deinitializes the window. External
+      // players do not switch, the loader restarts once they stop.
+      const auto appPlayer{CServiceBroker::GetAppComponents().GetComponent<CApplicationPlayer>()};
+      if (m_restartThumbLoader && !appPlayer->IsExternalPlaying())
+        CServiceBroker::GetAppMessenger()->PostMsg(TMSG_CALLBACK, -1, -1,
+                                                   &m_restartThumbLoaderCallback);
+      break;
+    }
+    case GUI_MSG_PLAYBACK_ERROR:
+    case GUI_MSG_PLAYBACK_STOPPED:
+    case GUI_MSG_PLAYBACK_ENDED:
+    {
+      const auto appPlayer{CServiceBroker::GetAppComponents().GetComponent<CApplicationPlayer>()};
+      if (!appPlayer->IsPlaying() && !appPlayer->HasNextItem())
+        RestartThumbLoader();
+      break;
+    }
     case GUI_MSG_SEARCH:
       OnSearch();
       break;
@@ -607,6 +628,9 @@ bool CGUIWindowVideoBase::ShowInfoAndRefresh(const CFileItemPtr& item,
                                          !item->GetVideoInfoTag()->m_strFileNameAndPath.empty()
                                      ? item->GetVideoInfoTag()->m_strFileNameAndPath
                                      : item->GetPath()};
+  // the dialog can send the refreshed details to the list item before they are compared
+  const std::optional<CVideoInfoTag> listedDetails{
+      item->HasVideoInfoTag() ? std::make_optional(*item->GetVideoInfoTag()) : std::nullopt};
   std::shared_ptr<CFileItem> updatedItem;
   const ShowInfoResult result{ShowInfo(item, info, updatedItem)};
   switch (result)
@@ -624,7 +648,8 @@ bool CGUIWindowVideoBase::ShowInfoAndRefresh(const CFileItemPtr& item,
       // Test IsActive() since we can be called from other windows (music, home) we need this check
       if (IsActive() && (result == RESULT_OK_UPDATED ||
                          !UpdateMovieListItem(listItemPath, originalFile, *updatedItem,
-                                              result == RESULT_OK_INFO_REFRESHED)))
+                                              result == RESULT_OK_INFO_REFRESHED,
+                                              listedDetails ? &*listedDetails : nullptr)))
       {
         const int selectedItem{m_viewControl.GetSelectedItem()};
         Refresh(true);
@@ -643,7 +668,8 @@ bool CGUIWindowVideoBase::ShowInfoAndRefresh(const CFileItemPtr& item,
 bool CGUIWindowVideoBase::UpdateMovieListItem(const std::string& listItemPath,
                                               const std::string& originalFile,
                                               const CFileItem& item,
-                                              bool infoRefreshed)
+                                              bool infoRefreshed,
+                                              const CVideoInfoTag* listedDetails)
 {
   // the information dialog can move on to another item
   if (!item.HasVideoInfoTag() || item.GetVideoInfoTag()->GetMediaType() != MEDIA::TYPE::MOVIE ||
@@ -671,13 +697,11 @@ bool CGUIWindowVideoBase::UpdateMovieListItem(const std::string& listItemPath,
   {
     // the refreshed details may change which items a filter, the watched mode or the movie set
     // grouping shows
-    const bool wasWatched{listItem->HasVideoInfoTag() &&
-                          listItem->GetVideoInfoTag()->GetPlayCount() > 0};
+    const bool wasWatched{listedDetails && listedDetails->GetPlayCount() > 0};
     if (IsFiltered() || !GetProperty("filter").empty() ||
         CURL(m_strFilterPath).HasOption("filter") ||
         wasWatched != (item.GetVideoInfoTag()->GetPlayCount() > 0) ||
-        (listItem->HasVideoInfoTag() &&
-         listItem->GetVideoInfoTag()->m_set.GetID() != item.GetVideoInfoTag()->m_set.GetID()))
+        (listedDetails && listedDetails->m_set.GetID() != item.GetVideoInfoTag()->m_set.GetID()))
       return false;
 
     if (!m_database.Open())
@@ -760,6 +784,7 @@ bool CGUIWindowVideoBase::UpdateMovieListItem(const std::string& listItemPath,
   }
 
   // loading the art can open the video file, so it is left to the loader thread
+  m_restartThumbLoader = false;
   m_thumbLoader.Load(*m_vecItems);
 
   RemoveDiscCache(m_vecItems->GetPath());
@@ -1233,10 +1258,16 @@ bool CGUIWindowVideoBase::OnContextButton(int itemNumber, CONTEXT_BUTTON button)
 bool CGUIWindowVideoBase::OnPlayMedia(const std::shared_ptr<CFileItem>& pItem,
                                       const std::string& player)
 {
+  const bool partyMode{g_partyModeManager.IsEnabled(PartyModeContext::VIDEO)};
+  // before the hold, so that the loader stops instead of going on with another item
+  const bool loaderStopped{!partyMode && m_thumbLoader.IsLoading()};
+  if (loaderStopped)
+    m_thumbLoader.StopAsync();
+
   const CBackgroundInfoLoader::CItemHold itemHold{m_thumbLoader, pItem.get()};
 
   // party mode
-  if (g_partyModeManager.IsEnabled(PartyModeContext::VIDEO))
+  if (partyMode)
   {
     PLAYLIST::CPlayList playlistTemp;
     playlistTemp.Add(pItem);
@@ -1261,21 +1292,30 @@ bool CGUIWindowVideoBase::OnPlayMedia(const std::shared_ptr<CFileItem>& pItem,
 
   itemCopy->SetProperty("playlist_type_hint", static_cast<int>(m_guiState->GetPlaylist()));
 
-  if (m_thumbLoader.IsLoading())
-    m_thumbLoader.StopAsync();
-
   CServiceBroker::GetPlaylistPlayer().Play(itemCopy, player);
   itemCopy->ClearProperty(ITEM::PROPERTY::PLAYLIST_CHOSEN);
 
   // Reset force selection flag
   pItem->ClearProperty(ITEM::PROPERTY::FORCE_PLAYLIST_SELECTION);
 
-  const auto& components = CServiceBroker::GetAppComponents();
-  const auto appPlayer = components.GetComponent<CApplicationPlayer>();
-  if (!appPlayer->IsPlayingVideo())
-    m_thumbLoader.Load(*m_vecItems);
-
+  if (loaderStopped)
+  {
+    const auto appPlayer{CServiceBroker::GetAppComponents().GetComponent<CApplicationPlayer>()};
+    if (appPlayer->IsPlaying() || appPlayer->HasNextItem())
+      m_restartThumbLoader = true;
+    else
+      m_thumbLoader.Load(*m_vecItems);
+  }
   return true;
+}
+
+void CGUIWindowVideoBase::RestartThumbLoader()
+{
+  if (!m_restartThumbLoader || !IsActive())
+    return;
+
+  m_restartThumbLoader = false;
+  m_thumbLoader.Load(*m_vecItems);
 }
 
 bool CGUIWindowVideoBase::OnPlayMedia(int iItem, const std::string& player)
@@ -1447,6 +1487,7 @@ bool CGUIWindowVideoBase::PlayItem(const std::shared_ptr<CFileItem>& pItem,
 
 bool CGUIWindowVideoBase::Update(const std::string &strDirectory, bool updateFilterPath /* = true */)
 {
+  m_restartThumbLoader = false;
   if (m_thumbLoader.IsLoading())
     m_thumbLoader.StopThread();
 
@@ -1554,6 +1595,7 @@ void CGUIWindowVideoBase::GetGroupedItems(CFileItemList &items)
 
 void CGUIWindowVideoBase::OnFilterItems(const std::string& filter)
 {
+  m_restartThumbLoader = false;
   // stop before the items are changed, the loader thread reads them
   if (m_thumbLoader.IsLoading())
     m_thumbLoader.StopThread();

@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include "messaging/ApplicationMessenger.h"
 #include "playlists/PlayListTypes.h"
 #include "video/VideoDatabase.h"
 #include "video/VideoThumbLoader.h"
@@ -114,12 +115,14 @@ protected:
    \param originalFile file of the movie the change was requested for
    \param item the changed movie
    \param infoRefreshed true if the movie was refreshed, false if only its art changed
+   \param listedDetails details of the list item before the information dialog, if infoRefreshed
    \return true if the list item was updated, false if the list has to be refreshed instead
    */
   bool UpdateMovieListItem(const std::string& listItemPath,
                            const std::string& originalFile,
                            const CFileItem& item,
-                           bool infoRefreshed);
+                           bool infoRefreshed,
+                           const CVideoInfoTag* listedDetails);
 
   void OnSearch();
   void OnSearchItemFound(const CFileItem* pSelItem);
@@ -138,9 +141,14 @@ protected:
   CVideoDatabase m_database;
 
   CVideoThumbLoader m_thumbLoader;
+  bool m_restartThumbLoader{false}; //!< stopped for playback, restarted if the window stays active
+  KODI::MESSAGING::ThreadMessageCallback m_restartThumbLoaderCallback{
+      [](void* window) { static_cast<CGUIWindowVideoBase*>(window)->RestartThumbLoader(); }, this};
   bool m_stackingAvailable;
 
 private:
+  void RestartThumbLoader();
+
   enum class ShowInfoResult
   {
     RESULT_ERROR, // some error occurred
