@@ -182,6 +182,7 @@ bool CRenderManager::Configure()
 
   if (m_pRenderer)
   {
+    m_pRenderer->PrepareForReconfigure();
     DeleteRenderer();
   }
 
@@ -235,6 +236,7 @@ bool CRenderManager::Configure()
     m_clockSync.Reset();
     m_dvdClock.SetVsyncAdjust(0);
     m_overlays.Reset();
+    OVERLAY::MarkDirty();
     m_overlays.SetStereoMode(m_picture.stereoMode);
 
     m_renderState = STATE_CONFIGURED;

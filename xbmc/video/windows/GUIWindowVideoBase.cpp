@@ -74,6 +74,7 @@
 #include <algorithm>
 #include <map>
 #include <memory>
+#include <optional>
 #include <ranges>
 #include <string>
 #include <unordered_map>
@@ -219,9 +220,21 @@ bool CGUIWindowVideoBase::OnMessage(CGUIMessage& message)
       }
     }
     break;
-  case GUI_MSG_SEARCH:
-    OnSearch();
-    break;
+    case GUI_MSG_NOTIFY_ALL:
+      if (message.GetParam1() == GUI_MSG_UPDATE_ITEM && message.GetItem())
+      {
+        const auto newItem{std::static_pointer_cast<CFileItem>(message.GetItem())};
+        // the item that CFileItemList::UpdateItem() updates
+        const auto it{std::ranges::find_if(*m_vecItems, [&newItem](const auto& item)
+                                           { return item->IsSamePath(newItem.get()); })};
+        const std::shared_ptr<CFileItem> listItem{it != m_vecItems->end() ? *it : nullptr};
+        const CBackgroundInfoLoader::CItemHold itemHold{m_thumbLoader, listItem.get()};
+        return CGUIMediaWindow::OnMessage(message);
+      }
+      break;
+    case GUI_MSG_SEARCH:
+      OnSearch();
+      break;
   }
   return CGUIMediaWindow::OnMessage(message);
 }
@@ -231,6 +244,9 @@ bool CGUIWindowVideoBase::OnItemInfo(const CFileItem& fileItem)
   if (fileItem.IsParentFolder() || fileItem.IsShareOrDrive() || fileItem.IsPath("add") ||
       (PLAYLIST::IsPlayList(fileItem) && !URIUtils::HasExtension(fileItem.GetDynPath(), ".strm")))
     return false;
+
+  // the item may be one of the list, which the loader thread writes
+  const CBackgroundInfoLoader::CItemHold itemHold{m_thumbLoader, &fileItem};
 
   // "Videos/Video Add-ons" lists addons in the video window
   if (fileItem.HasAddonInfo())
@@ -580,6 +596,9 @@ bool CGUIWindowVideoBase::ShowInfoAndRefresh(const CFileItemPtr& item,
                                          !item->GetVideoInfoTag()->m_strFileNameAndPath.empty()
                                      ? item->GetVideoInfoTag()->m_strFileNameAndPath
                                      : item->GetPath()};
+  // the dialog can send the refreshed details to the list item before they are compared
+  const std::optional<CVideoInfoTag> listedDetails{
+      item->HasVideoInfoTag() ? std::make_optional(*item->GetVideoInfoTag()) : std::nullopt};
   std::shared_ptr<CFileItem> updatedItem;
   const ShowInfoResult result{ShowInfo(item, info, updatedItem)};
   switch (result)
@@ -597,7 +616,8 @@ bool CGUIWindowVideoBase::ShowInfoAndRefresh(const CFileItemPtr& item,
       // Test IsActive() since we can be called from other windows (music, home) we need this check
       if (IsActive() && (result == RESULT_OK_UPDATED ||
                          !UpdateMovieListItem(listItemPath, originalFile, *updatedItem,
-                                              result == RESULT_OK_INFO_REFRESHED)))
+                                              result == RESULT_OK_INFO_REFRESHED,
+                                              listedDetails ? &*listedDetails : nullptr)))
       {
         const int selectedItem{m_viewControl.GetSelectedItem()};
         Refresh(true);
@@ -616,7 +636,8 @@ bool CGUIWindowVideoBase::ShowInfoAndRefresh(const CFileItemPtr& item,
 bool CGUIWindowVideoBase::UpdateMovieListItem(const std::string& listItemPath,
                                               const std::string& originalFile,
                                               const CFileItem& item,
-                                              bool infoRefreshed)
+                                              bool infoRefreshed,
+                                              const CVideoInfoTag* listedDetails)
 {
   // the information dialog can move on to another item
   if (!item.HasVideoInfoTag() || item.GetVideoInfoTag()->m_type != MediaTypeMovie ||
@@ -644,13 +665,11 @@ bool CGUIWindowVideoBase::UpdateMovieListItem(const std::string& listItemPath,
   {
     // the refreshed details may change which items a filter, the watched mode or the movie set
     // grouping shows
-    const bool wasWatched{listItem->HasVideoInfoTag() &&
-                          listItem->GetVideoInfoTag()->GetPlayCount() > 0};
+    const bool wasWatched{listedDetails && listedDetails->GetPlayCount() > 0};
     if (IsFiltered() || !GetProperty("filter").empty() ||
         CURL(m_strFilterPath).HasOption("filter") ||
         wasWatched != (item.GetVideoInfoTag()->GetPlayCount() > 0) ||
-        (listItem->HasVideoInfoTag() &&
-         listItem->GetVideoInfoTag()->m_set.GetID() != item.GetVideoInfoTag()->m_set.GetID()))
+        (listedDetails && listedDetails->m_set.GetID() != item.GetVideoInfoTag()->m_set.GetID()))
       return false;
 
     if (!m_database.Open())
@@ -1126,6 +1145,8 @@ bool CGUIWindowVideoBase::OnContextButton(int itemNumber, CONTEXT_BUTTON button)
     return OnPlayMedia(itemNumber);
   case CONTEXT_BUTTON_CHOOSE_PLAYLIST:
   {
+    const CBackgroundInfoLoader::CItemHold itemHold{m_thumbLoader, item.get()};
+
     item->SetProperty("force_playlist_selection", true);
     return OnPlayMedia(itemNumber);
   }
@@ -1138,6 +1159,8 @@ bool CGUIWindowVideoBase::OnContextButton(int itemNumber, CONTEXT_BUTTON button)
 bool CGUIWindowVideoBase::OnPlayMedia(const std::shared_ptr<CFileItem>& pItem,
                                       const std::string& player)
 {
+  const CBackgroundInfoLoader::CItemHold itemHold{m_thumbLoader, pItem.get()};
+
   // party mode
   if (g_partyModeManager.IsEnabled(PartyModeContext::VIDEO))
   {

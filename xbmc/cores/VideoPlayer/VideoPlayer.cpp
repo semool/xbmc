@@ -91,6 +91,14 @@ using namespace std::chrono_literals;
 
 namespace
 {
+// longer than a demuxer takes to hand over data it already has
+// CDVDDemuxClient's retry cap must stay at most half of this
+constexpr auto EMPTY_PACKET_GRACE = 1ms;
+// same as the idle sleep on full queues
+constexpr auto EMPTY_PACKET_MAX_SLEEP = 10ms;
+// sleep 1/N of the run so far, at least 1 ms, so a long read is picked up about 1/N late
+constexpr int EMPTY_PACKET_SLEEP_DIVISOR = 8;
+
 bool IsKnownLanguage(const CLanguageTag& language)
 {
   return !language.IsUndetermined();
@@ -1612,13 +1620,14 @@ void CVideoPlayer::Process()
 
   Prepare();
 
-  unsigned int emptyPackets = 0;
+  std::optional<std::chrono::steady_clock::time_point> emptySince;
 
   while (!m_bAbortRequest)
   {
     // check display lost
     if (m_displayLost)
     {
+      emptySince.reset();
       CThread::Sleep(50ms);
       continue;
     }
@@ -1696,9 +1705,11 @@ void CVideoPlayer::Process()
         m_pDemuxer->FillBuffer(fillBuffer);
     }
 
-    // if the queues are full, no need to read more
-    if ((!m_VideoPlayerAudio->AcceptsData() && m_CurrentAudio.id >= 0) ||
-        (!m_VideoPlayerVideo->AcceptsData() && m_CurrentVideo.id >= 0))
+    // If the queues are full, no need to read more, unless the full queue belongs
+    // to a stream that replays: its replayed packets are dropped and never reach it
+    if ((!m_VideoPlayerAudio->AcceptsData() && m_CurrentAudio.id >= 0 &&
+         !m_CurrentAudio.replaying) ||
+        (!m_VideoPlayerVideo->AcceptsData() && m_CurrentVideo.id >= 0 && !m_CurrentVideo.replaying))
     {
       if (m_playSpeed == DVD_PLAYSPEED_PAUSE &&
           m_demuxerSpeed != DVD_PLAYSPEED_PAUSE)
@@ -1707,6 +1718,7 @@ void CVideoPlayer::Process()
           m_pDemuxer->SetSpeed(DVD_PLAYSPEED_PAUSE);
         m_demuxerSpeed = DVD_PLAYSPEED_PAUSE;
       }
+      emptySince.reset();
       CThread::Sleep(10ms);
       continue;
     }
@@ -1723,26 +1735,45 @@ void CVideoPlayer::Process()
 
     DemuxPacket* pPacket = NULL;
     CDemuxStream *pStream = NULL;
+    const auto readStart = std::chrono::steady_clock::now();
     ReadPacket(pPacket, pStream);
     if (pPacket && !pStream)
     {
+      const auto now = std::chrono::steady_clock::now();
+      // nothing yet; special packets, dropped input and reads that blocked are progress
+      const bool waiting = pPacket->iStreamId == -1 && !pPacket->m_inputDropped &&
+                           now - readStart <= EMPTY_PACKET_GRACE;
+
       /* probably a empty packet, just free it and move on */
       CDVDDemuxUtils::FreeDemuxPacket(pPacket);
 
-      /* a source that cannot keep up hands these back as fast as we ask */
-      if (++emptyPackets > 10)
-        CThread::Sleep(10ms);
+      if (!waiting)
+      {
+        emptySince.reset();
+        continue;
+      }
+
+      // back off in proportion to how long the demuxer has had nothing
+      if (!emptySince)
+        emptySince = now;
+      else if (now - *emptySince > EMPTY_PACKET_GRACE)
+        CThread::Sleep(std::clamp(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                      (now - *emptySince) / EMPTY_PACKET_SLEEP_DIVISOR),
+                                  1ms, EMPTY_PACKET_MAX_SLEEP));
 
       continue;
     }
 
-    emptyPackets = 0;
+    emptySince.reset();
 
     if (!pPacket)
     {
       // when paused, demuxer could be be returning empty
       if (m_playSpeed == DVD_PLAYSPEED_PAUSE)
+      {
+        CThread::Sleep(10ms);
         continue;
+      }
 
       // check for a still frame state
       if (std::shared_ptr<CDVDInputStream::IMenus> pStream = std::dynamic_pointer_cast<CDVDInputStream::IMenus>(m_pInputStream))
@@ -1821,6 +1852,13 @@ void CVideoPlayer::Process()
       break;
     }
 
+    // Drop the packets the demuxer replays after a subtitle stream change
+    if (IsReplayedPacket(pStream, pPacket))
+    {
+      CDVDDemuxUtils::FreeDemuxPacket(pPacket);
+      continue;
+    }
+
     // see if we can find something better to play
     CheckBetterStream(m_CurrentAudio,    pStream);
     CheckBetterStream(m_CurrentVideo,    pStream);
@@ -1892,6 +1930,30 @@ bool CVideoPlayer::CheckIsCurrent(const CCurrentStream& current,
     return true;
   else
     return false;
+}
+
+bool CVideoPlayer::IsReplayedPacket(CDemuxStream* stream, DemuxPacket* packet)
+{
+  for (CCurrentStream* current : {&m_CurrentAudio, &m_CurrentVideo})
+  {
+    if (!current->replaying || !CheckIsCurrent(*current, stream, packet))
+      continue;
+
+    // A packet without timestamps can't be told from a new one, the stream keeps replaying
+    const double dts{packet->dts != DVD_NOPTS_VALUE ? packet->dts : packet->pts};
+    if (dts == DVD_NOPTS_VALUE)
+      return false;
+
+    // current->dts is the last dts the stream got, up to it the packets are replayed and
+    // the first one past it ends the replay
+    if (current->dts != DVD_NOPTS_VALUE && dts <= current->dts)
+      return true;
+
+    current->replaying = false;
+    return false;
+  }
+
+  return false;
 }
 
 void CVideoPlayer::ProcessPacket(CDemuxStream* pStream, DemuxPacket* pPacket)
@@ -4161,12 +4223,13 @@ void CVideoPlayer::ReopenSubtitleStream(const SelectionStream& stream)
 
   // For embedded subtitles the demuxer is ahead of playback (AV buffers
   // are full), so the subtitle packets for the current playback time have
-  // already been read and discarded. Seek back to the current time so they
-  // get re-read, mirroring what audio stream switching does.
+  // already been read and discarded. Read them again, without interrupting
+  // playback if possible, otherwise seek back to the current time like
+  // audio stream switching does.
   // A seek already queued re-reads them as well and must not be overridden.
   if (opened && STREAM_SOURCE_MASK(stream.source) == STREAM_SOURCE_DEMUX &&
       m_messenger.GetPacketCount(CDVDMsg::PLAYER_SEEK) == 0 &&
-      m_messenger.GetPacketCount(CDVDMsg::PLAYER_SEEK_CHAPTER) == 0)
+      m_messenger.GetPacketCount(CDVDMsg::PLAYER_SEEK_CHAPTER) == 0 && !RereadSubtitleData())
   {
     CDVDMsgPlayerSeek::CMode mode;
     mode.time = static_cast<double>(GetUpdatedTime());
@@ -4176,6 +4239,41 @@ void CVideoPlayer::ReopenSubtitleStream(const SelectionStream& stream)
     mode.sync = true;
     m_messenger.Put(std::make_shared<CDVDMsgPlayerSeek>(mode));
   }
+}
+
+bool CVideoPlayer::RereadSubtitleData()
+{
+  // Seeks the demuxer back on its own. The stream players keep their data, the packets
+  // the demuxer replays for them are dropped in Process(). Only for a file, other inputs
+  // seek in their own way and may reset the demuxer or restart the timeline. Not while
+  // fast-forwarding or rewinding, the demuxer discards frames there. The player time
+  // has to be the demuxer time. Returns false if not done, the player has to seek then.
+  const bool ffrw{
+      m_playSpeed != DVD_PLAYSPEED_NORMAL && m_playSpeed != DVD_PLAYSPEED_PAUSE &&
+      !m_processInfo->IsTempoAllowed(static_cast<float>(m_playSpeed) / DVD_PLAYSPEED_NORMAL)};
+  if (ffrw || m_offset_pts != 0.0 || !m_pInputStream->IsStreamType(DVDSTREAM_TYPE_FILE))
+    return false;
+
+  // Replayed packets are found by dts, the demuxer has to be ahead of the clock
+  const double clock{GetCaughtUpClock()};
+  for (const CCurrentStream* current : {&m_CurrentAudio, &m_CurrentVideo})
+  {
+    if (current->id >= 0 && (current->dts == DVD_NOPTS_VALUE || current->dts < clock))
+      return false;
+  }
+
+  // The playback time has EDL cuts removed, the demuxer time hasn't
+  const std::chrono::milliseconds time{
+      m_Edl.GetTimeAfterRestoringCuts(std::chrono::milliseconds{GetUpdatedTime()})};
+
+  if (!m_pDemuxer->SeekTime(static_cast<double>(time.count()), true))
+    return false;
+
+  m_CurrentAudio.replaying = m_CurrentAudio.id >= 0;
+  m_CurrentVideo.replaying = m_CurrentVideo.id >= 0;
+
+  CLog::LogF(LOGDEBUG, "re-reading subtitle data from demuxer time {}", time.count());
+  return true;
 }
 
 void CVideoPlayer::SetSubtitleVerticalPosition(int value, bool save)
@@ -4331,6 +4429,10 @@ bool CVideoPlayer::OpenStream(CCurrentStream& current, int64_t demuxerId, int iS
   CDemuxStream* stream = NULL;
   CDVDStreamInfo hint;
 
+  // CloseFile() is waiting for this thread
+  if (m_bStop)
+    return false;
+
   CLog::Log(LOGINFO, "Opening stream: {} source: {}", iStream, source);
 
   if(STREAM_SOURCE_MASK(source) == STREAM_SOURCE_DEMUX_SUB)
@@ -4462,6 +4564,7 @@ bool CVideoPlayer::OpenStream(CCurrentStream& current, int64_t demuxerId, int iS
     current.demuxerId = demuxerId;
     current.source = source;
     current.demuxDisabled = false;
+    current.replaying = false;
     current.hint = hint;
     current.stream = (void*)stream;
     current.lastdts = DVD_NOPTS_VALUE;
@@ -4472,7 +4575,7 @@ bool CVideoPlayer::OpenStream(CCurrentStream& current, int64_t demuxerId, int iS
   }
   else
   {
-    if(stream)
+    if (stream && !m_bStop)
     {
       /* mark stream as disabled, to disallow further attempts*/
       CLog::Log(LOGWARNING, "{} - Unsupported stream {}. Stream disabled.", __FUNCTION__,
@@ -4588,7 +4691,11 @@ bool CVideoPlayer::OpenVideoStream(CDVDStreamInfo& hint, bool reset)
                                                    (hint.fpsrate * (hint.interlaced ? 2 : 1)));
 
       RESOLUTION res = CResolutionUtils::ChooseBestResolution(static_cast<float>(framerate), hint.width, hint.height, !hint.stereo_mode.empty());
-      CServiceBroker::GetWinSystem()->GetGfxContext().SetVideoResolution(res, false);
+      // CloseFile() blocks the app thread in StopThread(), don't wait for it past that
+      CServiceBroker::GetWinSystem()->GetGfxContext().SetVideoResolution(res, false,
+                                                                         &GetStopEvent());
+      if (m_bStop)
+        return false;
       m_renderManager.TriggerUpdateResolution(framerate, hint.width, hint.height, hint.stereo_mode);
     }
   }
@@ -4804,10 +4911,12 @@ void CVideoPlayer::FlushBuffers(double pts, bool accurate, bool sync)
   }
 
   m_CurrentAudio.dts         = DVD_NOPTS_VALUE;
+  m_CurrentAudio.replaying = false;
   m_CurrentAudio.startpts    = startpts;
   m_CurrentAudio.packets = 0;
 
   m_CurrentVideo.dts         = DVD_NOPTS_VALUE;
+  m_CurrentVideo.replaying = false;
   m_CurrentVideo.startpts    = startpts;
   m_CurrentVideo.packets = 0;
 
