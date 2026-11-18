@@ -24,6 +24,7 @@
 #include "application/ApplicationPlayer.h"
 #include "application/ApplicationPowerHandling.h"
 #include "cores/playercorefactory/PlayerCoreFactory.h"
+#include "filesystem/Directory.h"
 #include "filesystem/File.h"
 #include "guilib/GUIComponent.h"
 #include "guilib/GUIWindowManager.h"
@@ -51,12 +52,14 @@
 #include "settings/MediaSettings.h"
 #include "settings/Settings.h"
 #include "settings/SettingsComponent.h"
+#include "utils/FileExtensionProvider.h"
 #include "utils/ItemProperties.h"
 #include "utils/MathUtils.h"
 #include "utils/PlayerUtils.h"
 #include "utils/URIUtils.h"
 #include "utils/Variant.h"
 #include "video/VideoDatabase.h"
+#include "video/VideoFileItemClassify.h"
 
 #include <map>
 #include <memory>
@@ -124,7 +127,8 @@ void OverlayCurrentSongTag(CFileItem& item)
 
 } // namespace
 
-JSONRPC_STATUS CPlayerOperations::GetActivePlayers(const std::string &method, ITransportLayer *transport, IClient *client, const CVariant &parameterObject, CVariant &result)
+JSONRPC_STATUS CPlayerOperations::GetActivePlayers(const CVariant& parameterObject,
+                                                   CVariant& result)
 {
   int activePlayers = GetActivePlayers();
   result = CVariant(CVariant::VariantTypeArray);
@@ -163,7 +167,7 @@ JSONRPC_STATUS CPlayerOperations::GetActivePlayers(const std::string &method, IT
   return OK;
 }
 
-JSONRPC_STATUS CPlayerOperations::GetPlayers(const std::string &method, ITransportLayer *transport, IClient *client, const CVariant &parameterObject, CVariant &result)
+JSONRPC_STATUS CPlayerOperations::GetPlayers(const CVariant& parameterObject, CVariant& result)
 {
   const CPlayerCoreFactory &playerCoreFactory = CServiceBroker::GetPlayerCoreFactory();
 
@@ -198,7 +202,7 @@ JSONRPC_STATUS CPlayerOperations::GetPlayers(const std::string &method, ITranspo
   return OK;
 }
 
-JSONRPC_STATUS CPlayerOperations::GetProperties(const std::string &method, ITransportLayer *transport, IClient *client, const CVariant &parameterObject, CVariant &result)
+JSONRPC_STATUS CPlayerOperations::GetProperties(const CVariant& parameterObject, CVariant& result)
 {
   PlayerType player = GetPlayer(parameterObject["playerid"]);
 
@@ -219,7 +223,7 @@ JSONRPC_STATUS CPlayerOperations::GetProperties(const std::string &method, ITran
   return OK;
 }
 
-JSONRPC_STATUS CPlayerOperations::GetItem(const std::string &method, ITransportLayer *transport, IClient *client, const CVariant &parameterObject, CVariant &result)
+JSONRPC_STATUS CPlayerOperations::GetItem(const CVariant& parameterObject, CVariant& result)
 {
   PlayerType player = GetPlayer(parameterObject["playerid"]);
   CFileItemPtr fileItem;
@@ -350,7 +354,7 @@ JSONRPC_STATUS CPlayerOperations::GetItem(const std::string &method, ITransportL
   return OK;
 }
 
-JSONRPC_STATUS CPlayerOperations::PlayPause(const std::string &method, ITransportLayer *transport, IClient *client, const CVariant &parameterObject, CVariant &result)
+JSONRPC_STATUS CPlayerOperations::PlayPause(const CVariant& parameterObject, CVariant& result)
 {
   switch (GetPlayer(parameterObject["playerid"]))
   {
@@ -399,7 +403,7 @@ JSONRPC_STATUS CPlayerOperations::PlayPause(const std::string &method, ITranspor
   }
 }
 
-JSONRPC_STATUS CPlayerOperations::Stop(const std::string &method, ITransportLayer *transport, IClient *client, const CVariant &parameterObject, CVariant &result)
+JSONRPC_STATUS CPlayerOperations::Stop(const CVariant& parameterObject, CVariant& result)
 {
   switch (GetPlayer(parameterObject["playerid"]))
   {
@@ -419,11 +423,7 @@ JSONRPC_STATUS CPlayerOperations::Stop(const std::string &method, ITransportLaye
   }
 }
 
-JSONRPC_STATUS CPlayerOperations::GetAudioDelay(const std::string& method,
-                                                ITransportLayer* transport,
-                                                IClient* client,
-                                                const CVariant& parameterObject,
-                                                CVariant& result)
+JSONRPC_STATUS CPlayerOperations::GetAudioDelay(const CVariant& parameterObject, CVariant& result)
 {
   auto& components = CServiceBroker::GetAppComponents();
   const auto appPlayer = components.GetComponent<CApplicationPlayer>();
@@ -431,10 +431,7 @@ JSONRPC_STATUS CPlayerOperations::GetAudioDelay(const std::string& method,
   return OK;
 }
 
-JSONRPC_STATUS CPlayerOperations::NotifyAudioChainReady(const std::string& method,
-                                                        ITransportLayer* transport,
-                                                        IClient* client,
-                                                        const CVariant& parameterObject,
+JSONRPC_STATUS CPlayerOperations::NotifyAudioChainReady(const CVariant& parameterObject,
                                                         CVariant& result)
 {
   auto& components = CServiceBroker::GetAppComponents();
@@ -442,11 +439,7 @@ JSONRPC_STATUS CPlayerOperations::NotifyAudioChainReady(const std::string& metho
   return ACK;
 }
 
-JSONRPC_STATUS CPlayerOperations::SetAudioDelay(const std::string& method,
-                                                ITransportLayer* transport,
-                                                IClient* client,
-                                                const CVariant& parameterObject,
-                                                CVariant& result)
+JSONRPC_STATUS CPlayerOperations::SetAudioDelay(const CVariant& parameterObject, CVariant& result)
 {
   switch (GetPlayer(parameterObject["playerid"]))
   {
@@ -502,7 +495,7 @@ JSONRPC_STATUS CPlayerOperations::SetAudioDelay(const std::string& method,
   }
 }
 
-JSONRPC_STATUS CPlayerOperations::SetSpeed(const std::string &method, ITransportLayer *transport, IClient *client, const CVariant &parameterObject, CVariant &result)
+JSONRPC_STATUS CPlayerOperations::SetSpeed(const CVariant& parameterObject, CVariant& result)
 {
   switch (GetPlayer(parameterObject["playerid"]))
   {
@@ -545,11 +538,7 @@ JSONRPC_STATUS CPlayerOperations::SetSpeed(const std::string &method, ITransport
   }
 }
 
-JSONRPC_STATUS CPlayerOperations::SetTempo(const std::string& method,
-                                           ITransportLayer* transport,
-                                           IClient* client,
-                                           const CVariant& parameterObject,
-                                           CVariant& result)
+JSONRPC_STATUS CPlayerOperations::SetTempo(const CVariant& parameterObject, CVariant& result)
 {
   switch (GetPlayer(parameterObject["playerid"]))
   {
@@ -612,7 +601,7 @@ void HandleResumeOption(const CVariant& optionResume, CFileItem& item)
 }
 } // unnamed namespace
 
-JSONRPC_STATUS CPlayerOperations::Seek(const std::string &method, ITransportLayer *transport, IClient *client, const CVariant &parameterObject, CVariant &result)
+JSONRPC_STATUS CPlayerOperations::Seek(const CVariant& parameterObject, CVariant& result)
 {
   PlayerType player = GetPlayer(parameterObject["playerid"]);
   switch (player)
@@ -662,7 +651,7 @@ JSONRPC_STATUS CPlayerOperations::Seek(const std::string &method, ITransportLaye
   }
 }
 
-JSONRPC_STATUS CPlayerOperations::Move(const std::string &method, ITransportLayer *transport, IClient *client, const CVariant &parameterObject, CVariant &result)
+JSONRPC_STATUS CPlayerOperations::Move(const CVariant& parameterObject, CVariant& result)
 {
   std::string direction = parameterObject["direction"].asString();
   switch (GetPlayer(parameterObject["playerid"]))
@@ -702,7 +691,7 @@ JSONRPC_STATUS CPlayerOperations::Move(const std::string &method, ITransportLaye
   }
 }
 
-JSONRPC_STATUS CPlayerOperations::Zoom(const std::string &method, ITransportLayer *transport, IClient *client, const CVariant &parameterObject, CVariant &result)
+JSONRPC_STATUS CPlayerOperations::Zoom(const CVariant& parameterObject, CVariant& result)
 {
   CVariant zoom = parameterObject["zoom"];
   switch (GetPlayer(parameterObject["playerid"]))
@@ -785,7 +774,7 @@ void GetNewValueForViewModeParameter(const CVariant &parameter, float stepSize, 
   result = std::max(minValue, std::min(result, maxValue));
 }
 
-JSONRPC_STATUS CPlayerOperations::SetViewMode(const std::string &method, ITransportLayer *transport, IClient *client, const CVariant &parameterObject, CVariant &result)
+JSONRPC_STATUS CPlayerOperations::SetViewMode(const CVariant& parameterObject, CVariant& result)
 {
   JSONRPC_STATUS jsonStatus = InvalidParams;
   // init with current values from settings
@@ -848,7 +837,7 @@ JSONRPC_STATUS CPlayerOperations::SetViewMode(const std::string &method, ITransp
   return jsonStatus;
 }
 
-JSONRPC_STATUS CPlayerOperations::GetViewMode(const std::string &method, ITransportLayer *transport, IClient *client, const CVariant &parameterObject, CVariant &result)
+JSONRPC_STATUS CPlayerOperations::GetViewMode(const CVariant& parameterObject, CVariant& result)
 {
   const auto& components = CServiceBroker::GetAppComponents();
   const auto appPlayer = components.GetComponent<CApplicationPlayer>();
@@ -864,7 +853,7 @@ JSONRPC_STATUS CPlayerOperations::GetViewMode(const std::string &method, ITransp
   return OK;
 }
 
-JSONRPC_STATUS CPlayerOperations::Rotate(const std::string &method, ITransportLayer *transport, IClient *client, const CVariant &parameterObject, CVariant &result)
+JSONRPC_STATUS CPlayerOperations::Rotate(const CVariant& parameterObject, CVariant& result)
 {
   switch (GetPlayer(parameterObject["playerid"]))
   {
@@ -883,13 +872,12 @@ JSONRPC_STATUS CPlayerOperations::Rotate(const std::string &method, ITransportLa
   }
 }
 
-JSONRPC_STATUS CPlayerOperations::Open(const std::string &method, ITransportLayer *transport, IClient *client, const CVariant &parameterObject, CVariant &result)
+JSONRPC_STATUS CPlayerOperations::Open(const CVariant& parameterObject, CVariant& result)
 {
   CVariant options = parameterObject["options"];
   CVariant optionShuffled = options["shuffled"];
   CVariant optionRepeat = options["repeat"];
   CVariant optionResume = options["resume"];
-  CVariant optionPlayer = options["playername"];
 
   if (parameterObject["item"].isMember("playlistid"))
   {
@@ -939,9 +927,19 @@ JSONRPC_STATUS CPlayerOperations::Open(const std::string &method, ITransportLaye
   }
   else if (parameterObject["item"].isMember("path"))
   {
+    const std::string path{parameterObject["item"]["path"].asString()};
+    const bool recursive{parameterObject["item"]["recursive"].asBoolean()};
+
+    // Only a directory holding pictures is a slideshow; one holding none plays as a playlist.
+    CFileItemList pictures;
+    CFileItemList media;
+    if (ListSlideshowDirectory(path, recursive, pictures, media) && pictures.IsEmpty() &&
+        !media.IsEmpty())
+      return PlayFileItemList(media, options);
+
     bool random = (optionShuffled.isBoolean() && optionShuffled.asBoolean()) ||
                   (!optionShuffled.isBoolean() && parameterObject["item"]["random"].asBoolean());
-    return StartSlideshow(parameterObject["item"]["path"].asString(), parameterObject["item"]["recursive"].asBoolean(), random);
+    return StartSlideshow(path, recursive, random);
   }
   else if (parameterObject["item"].isObject() && parameterObject["item"].isMember("partymode"))
   {
@@ -1074,64 +1072,7 @@ JSONRPC_STATUS CPlayerOperations::Open(const std::string &method, ITransportLaye
           return FailedToExecute;
       }
       else
-      {
-        std::string playername;
-        // Handle the "playerid" option
-        if (!optionPlayer.isNull())
-        {
-          if (optionPlayer.isString())
-          {
-            playername = optionPlayer.asString();
-
-            if (playername != "default")
-            {
-              const CPlayerCoreFactory &playerCoreFactory = CServiceBroker::GetPlayerCoreFactory();
-
-              // check if the there's actually a player with the given name
-              if (playerCoreFactory.GetPlayerType(playername).empty())
-                return InvalidParams;
-
-              // check if the player can handle at least the first item in the list
-              std::vector<std::string> possiblePlayers;
-              playerCoreFactory.GetPlayers(*list.Get(0).get(), possiblePlayers);
-
-              bool match = false;
-              for (const auto& entry : possiblePlayers)
-              {
-                if (StringUtils::EqualsNoCase(entry, playername))
-                {
-                  match = true;
-                  break;
-                }
-              }
-              if (!match)
-                return InvalidParams;
-            }
-          }
-          else
-            return InvalidParams;
-        }
-
-        // Handle "shuffled" option
-        if (optionShuffled.isBoolean())
-          list.SetProperty("shuffled", optionShuffled);
-        // Handle "repeat" option
-        if (!optionRepeat.isNull())
-          list.SetProperty("repeat", static_cast<int>(ParseRepeatState(optionRepeat)));
-        // Handle "resume" option
-        if (list.Size() == 1)
-          HandleResumeOption(optionResume, *list[0]);
-
-        // Playback is posted asynchronously, so nothing after this point can be reported
-        // back to the caller. Report an addressable single item that cannot be reached.
-        if (list.Size() == 1 && !IsReachable(*list[0]))
-          return Unavailable;
-
-        auto l = new CFileItemList(); //don't delete
-        l->Copy(list);
-        CServiceBroker::GetAppMessenger()->PostMsg(TMSG_MEDIA_PLAY, -1, -1, static_cast<void*>(l),
-                                                   playername);
-      }
+        return PlayFileItemList(list, options);
 
       return ACK;
     }
@@ -1142,7 +1083,129 @@ JSONRPC_STATUS CPlayerOperations::Open(const std::string &method, ITransportLaye
   return InvalidParams;
 }
 
-JSONRPC_STATUS CPlayerOperations::GoTo(const std::string &method, ITransportLayer *transport, IClient *client, const CVariant &parameterObject, CVariant &result)
+JSONRPC_STATUS CPlayerOperations::PlayFileItemList(CFileItemList& list, const CVariant& options)
+{
+  const CVariant& optionShuffled = options["shuffled"];
+  const CVariant& optionRepeat = options["repeat"];
+  const CVariant& optionResume = options["resume"];
+  const CVariant& optionPlayer = options["playername"];
+
+  std::string playername;
+  // Handle the "playerid" option
+  if (!optionPlayer.isNull())
+  {
+    if (optionPlayer.isString())
+    {
+      playername = optionPlayer.asString();
+
+      if (playername != "default")
+      {
+        const CPlayerCoreFactory& playerCoreFactory = CServiceBroker::GetPlayerCoreFactory();
+
+        // check if the there's actually a player with the given name
+        if (playerCoreFactory.GetPlayerType(playername).empty())
+          return InvalidParams;
+
+        // check if the player can handle at least the first item in the list
+        std::vector<std::string> possiblePlayers;
+        playerCoreFactory.GetPlayers(*list.Get(0).get(), possiblePlayers);
+
+        bool match = false;
+        for (const auto& entry : possiblePlayers)
+        {
+          if (StringUtils::EqualsNoCase(entry, playername))
+          {
+            match = true;
+            break;
+          }
+        }
+        if (!match)
+          return InvalidParams;
+      }
+    }
+    else
+      return InvalidParams;
+  }
+
+  // Handle "shuffled" option
+  if (optionShuffled.isBoolean())
+    list.SetProperty("shuffled", optionShuffled);
+  // Handle "repeat" option
+  if (!optionRepeat.isNull())
+    list.SetProperty("repeat", static_cast<int>(ParseRepeatState(optionRepeat)));
+  // Handle "resume" option
+  if (list.Size() == 1)
+    HandleResumeOption(optionResume, *list[0]);
+
+  // Playback is posted asynchronously, so nothing after this point can be reported
+  // back to the caller. Report an addressable single item that cannot be reached.
+  if (list.Size() == 1 && !IsReachable(*list[0]))
+    return Unavailable;
+
+  auto l = new CFileItemList(); //don't delete
+  l->Copy(list);
+  CServiceBroker::GetAppMessenger()->PostMsg(TMSG_MEDIA_PLAY, -1, -1, static_cast<void*>(l),
+                                             playername);
+
+  return ACK;
+}
+
+bool CPlayerOperations::ListSlideshowDirectory(const std::string& path,
+                                               bool recursive,
+                                               CFileItemList& pictures,
+                                               CFileItemList& media,
+                                               std::set<std::string>* visitedPaths /* = nullptr */)
+{
+  // a link to an enclosing directory can list with that directory's own path
+  std::set<std::string> visited;
+  if (!visitedPaths)
+    visitedPaths = &visited;
+  std::string directory{path};
+  URIUtils::RemoveSlashAtEnd(directory);
+  if (!visitedPaths->insert(directory).second)
+    return true;
+
+  const CFileExtensionProvider& extensions = CServiceBroker::GetFileExtensionProvider();
+  const std::string mask{extensions.GetPictureExtensions() + "|" + extensions.GetVideoExtensions() +
+                         "|" + extensions.GetMusicExtensions()};
+
+  CFileItemList items;
+  if (!XFILE::CDirectory::GetDirectory(path, items, mask, XFILE::DIR_FLAG_NO_FILE_DIRS))
+    return false;
+
+  items.Sort(SortBy::FILE, SortOrder::ASCENDING);
+
+  // one picture makes the directory a slideshow, and the slideshow window lists the rest itself
+  for (const auto& item : items)
+  {
+    if (item->IsFolder())
+    {
+      if (recursive)
+        ListSlideshowDirectory(item->GetPath(), true, pictures, media, visitedPaths);
+    }
+    else if (URIUtils::IsRAR(item->GetPath()) || URIUtils::IsZIP(item->GetPath()))
+    {
+      // The slideshow window passes over an archive, and it is not media to play either
+    }
+    else if (item->IsPicture())
+      pictures.Add(item);
+    else if (VIDEO::IsVideo(*item) || MUSIC::IsAudio(*item))
+    {
+      // Alone in its directory, a file that could be either has to say which player it wants.
+      // Among others it already plays as video.
+      if (VIDEO::IsVideo(*item) && MUSIC::IsAudio(*item))
+        item->SetProperty("playlist_type_hint", static_cast<int>(PLAYLIST::Id::TYPE_VIDEO));
+      media.Add(item);
+    }
+
+    if (!pictures.IsEmpty())
+      return true;
+  }
+
+  return true;
+}
+
+JSONRPC_STATUS CPlayerOperations::GoTo(const CVariant& parameterObject, CVariant& result)
 {
   CVariant to = parameterObject["to"];
   switch (GetPlayer(parameterObject["playerid"]))
@@ -1205,7 +1268,7 @@ JSONRPC_STATUS CPlayerOperations::GoTo(const std::string &method, ITransportLaye
   return ACK;
 }
 
-JSONRPC_STATUS CPlayerOperations::SetShuffle(const std::string &method, ITransportLayer *transport, IClient *client, const CVariant &parameterObject, CVariant &result)
+JSONRPC_STATUS CPlayerOperations::SetShuffle(const CVariant& parameterObject, CVariant& result)
 {
   CVariant shuffle = parameterObject["shuffle"];
   switch (GetPlayer(parameterObject["playerid"]))
@@ -1266,7 +1329,7 @@ JSONRPC_STATUS CPlayerOperations::SetShuffle(const std::string &method, ITranspo
   return ACK;
 }
 
-JSONRPC_STATUS CPlayerOperations::SetRepeat(const std::string &method, ITransportLayer *transport, IClient *client, const CVariant &parameterObject, CVariant &result)
+JSONRPC_STATUS CPlayerOperations::SetRepeat(const CVariant& parameterObject, CVariant& result)
 {
   switch (GetPlayer(parameterObject["playerid"]))
   {
@@ -1305,7 +1368,7 @@ JSONRPC_STATUS CPlayerOperations::SetRepeat(const std::string &method, ITranspor
   return ACK;
 }
 
-JSONRPC_STATUS CPlayerOperations::SetPartymode(const std::string &method, ITransportLayer *transport, IClient *client, const CVariant &parameterObject, CVariant &result)
+JSONRPC_STATUS CPlayerOperations::SetPartymode(const CVariant& parameterObject, CVariant& result)
 {
   PlayerType player = GetPlayer(parameterObject["playerid"]);
   switch (player)
@@ -1359,7 +1422,7 @@ JSONRPC_STATUS CPlayerOperations::SetPartymode(const std::string &method, ITrans
   return ACK;
 }
 
-JSONRPC_STATUS CPlayerOperations::SetAudioStream(const std::string &method, ITransportLayer *transport, IClient *client, const CVariant &parameterObject, CVariant &result)
+JSONRPC_STATUS CPlayerOperations::SetAudioStream(const CVariant& parameterObject, CVariant& result)
 {
   switch (GetPlayer(parameterObject["playerid"]))
   {
@@ -1410,7 +1473,7 @@ JSONRPC_STATUS CPlayerOperations::SetAudioStream(const std::string &method, ITra
   return ACK;
 }
 
-JSONRPC_STATUS CPlayerOperations::AddSubtitle(const std::string &method, ITransportLayer *transport, IClient *client, const CVariant &parameterObject, CVariant &result)
+JSONRPC_STATUS CPlayerOperations::AddSubtitle(const CVariant& parameterObject, CVariant& result)
 {
   if (GetPlayer(parameterObject["playerid"]) != Video)
     return FailedToExecute;
@@ -1429,7 +1492,7 @@ JSONRPC_STATUS CPlayerOperations::AddSubtitle(const std::string &method, ITransp
   return ACK;
 }
 
-JSONRPC_STATUS CPlayerOperations::SetSubtitle(const std::string &method, ITransportLayer *transport, IClient *client, const CVariant &parameterObject, CVariant &result)
+JSONRPC_STATUS CPlayerOperations::SetSubtitle(const CVariant& parameterObject, CVariant& result)
 {
   switch (GetPlayer(parameterObject["playerid"]))
   {
@@ -1494,7 +1557,7 @@ JSONRPC_STATUS CPlayerOperations::SetSubtitle(const std::string &method, ITransp
   return ACK;
 }
 
-JSONRPC_STATUS CPlayerOperations::SetVideoStream(const std::string &method, ITransportLayer *transport, IClient *client, const CVariant &parameterObject, CVariant &result)
+JSONRPC_STATUS CPlayerOperations::SetVideoStream(const CVariant& parameterObject, CVariant& result)
 {
   switch (GetPlayer(parameterObject["playerid"]))
   {
@@ -2073,7 +2136,7 @@ JSONRPC_STATUS CPlayerOperations::GetPropertyValue(PlayerType player, const std:
 
             result["index"] = index;
             result["name"] = info.name;
-            result["language"] = info.language.AsBcp47();
+            result["language"] = info.language.ToString();
             result["codec"] = info.codecName;
             result["bitrate"] = info.bitrate;
             result["channels"] = info.channels;
@@ -2113,7 +2176,7 @@ JSONRPC_STATUS CPlayerOperations::GetPropertyValue(PlayerType player, const std:
             CVariant audioStream(CVariant::VariantTypeObject);
             audioStream["index"] = index;
             audioStream["name"] = info.name;
-            audioStream["language"] = info.language.AsBcp47();
+            audioStream["language"] = info.language.ToString();
             audioStream["codec"] = info.codecName;
             audioStream["bitrate"] = info.bitrate;
             audioStream["channels"] = info.channels;
@@ -2149,7 +2212,7 @@ JSONRPC_STATUS CPlayerOperations::GetPropertyValue(PlayerType player, const std:
 
         result["index"] = index;
         result["name"] = info.name;
-        result["language"] = info.language.AsBcp47();
+        result["language"] = info.language.ToString();
         result["codec"] = info.codecName;
         result["width"] = info.width;
         result["height"] = info.height;
@@ -2185,7 +2248,7 @@ JSONRPC_STATUS CPlayerOperations::GetPropertyValue(PlayerType player, const std:
           CVariant videoStream(CVariant::VariantTypeObject);
           videoStream["index"] = index;
           videoStream["name"] = info.name;
-          videoStream["language"] = info.language.AsBcp47();
+          videoStream["language"] = info.language.ToString();
           videoStream["codec"] = info.codecName;
           videoStream["width"] = info.width;
           videoStream["height"] = info.height;
@@ -2239,7 +2302,7 @@ JSONRPC_STATUS CPlayerOperations::GetPropertyValue(PlayerType player, const std:
 
             result["index"] = index;
             result["name"] = info.name;
-            result["language"] = info.language.AsBcp47();
+            result["language"] = info.language.ToString();
             AppendSubtitleStreamFlagsAsBooleans(result, info.flags);
           }
         }
@@ -2274,7 +2337,7 @@ JSONRPC_STATUS CPlayerOperations::GetPropertyValue(PlayerType player, const std:
             CVariant subtitle(CVariant::VariantTypeObject);
             subtitle["index"] = index;
             subtitle["name"] = info.name;
-            subtitle["language"] = info.language.AsBcp47();
+            subtitle["language"] = info.language.ToString();
             AppendSubtitleStreamFlagsAsBooleans(subtitle, info.flags);
 
             result.append(subtitle);
@@ -2331,11 +2394,7 @@ std::shared_ptr<CPVREpgInfoTag> CPlayerOperations::GetCurrentEpg()
   return currentChannel->GetEPGNow();
 }
 
-JSONRPC_STATUS CPlayerOperations::GetChapters(const std::string& method,
-                                              ITransportLayer* transport,
-                                              IClient* client,
-                                              const CVariant& parameterObject,
-                                              CVariant& result)
+JSONRPC_STATUS CPlayerOperations::GetChapters(const CVariant& parameterObject, CVariant& result)
 {
   // Return the chapters list of the running video or empty list if none
   switch (GetPlayer(parameterObject["playerid"]))

@@ -73,6 +73,7 @@
 #include "filesystem/UPnPDirectory.h"
 #endif
 #include "guilib/TextureManager.h"
+#include "language/LanguageTag.h"
 #include "network/Network.h"
 #include "network/NetworkFileItemClassify.h"
 #include "platform/Environment.h"
@@ -1975,12 +1976,15 @@ void CUtil::GetVideoBasePathAndFileName(const std::string& videoPath,
 void CUtil::GetItemsToScan(const std::string& videoPath,
                            const std::string& item_exts,
                            const std::vector<std::string>& sub_dirs,
-                           CFileItemList& items)
+                           CFileItemList& items,
+                           int listingFlags /* = 0 */)
 {
   int flags = DIR_FLAG_NO_FILE_DIRS | DIR_FLAG_NO_FILE_INFO;
 
+  // Only the video's folder is listed with the flags given: a scan that has just listed it can read
+  // it from the cache, but hasn't listed the folders of subtitles in it
   if (!videoPath.empty())
-    CDirectory::GetDirectory(videoPath, items, item_exts, flags);
+    CDirectory::GetDirectory(videoPath, items, item_exts, flags | listingFlags);
 
   std::vector<std::string> additionalPaths;
   for (const auto &item : items)
@@ -2268,7 +2272,8 @@ bool CUtil::IsDiscPlaylistExtra(const std::string& videoPath, const CVideoInfoTa
 
 void CUtil::ScanForExternalSubtitles(const std::string& strMovie,
                                      std::vector<std::string>& vecSubtitles,
-                                     const CVideoInfoTag* tag /* = nullptr */)
+                                     const CVideoInfoTag* tag /* = nullptr */,
+                                     int listingFlags /* = 0 */)
 {
   auto start = std::chrono::steady_clock::now();
 
@@ -2299,7 +2304,7 @@ void CUtil::ScanForExternalSubtitles(const std::string& strMovie,
   CFileItemList items;
   const std::vector<std::string> common_sub_dirs = { "subs", "subtitles", "vobsubs", "sub", "vobsub", "subtitle" };
   const std::string subtitleExtensions = CServiceBroker::GetFileExtensionProvider().GetSubtitleExtensions();
-  GetItemsToScan(strBasePath, subtitleExtensions, common_sub_dirs, items);
+  GetItemsToScan(strBasePath, subtitleExtensions, common_sub_dirs, items, listingFlags);
 
   // A version (playlist) of a bluray has subtitles of its own beside the disc, and only there, as
   // another folder could be shared by many discs
@@ -2335,6 +2340,7 @@ void CUtil::ScanForExternalSubtitles(const std::string& strMovie,
     strLookInPaths.push_back(strPath2);
   }
 
+  // Not read from the cache, as a scan lists it nowhere else: what the cache holds may be old
   int flags = DIR_FLAG_NO_FILE_DIRS | DIR_FLAG_NO_FILE_INFO;
   for (const std::string& path : strLookInPaths)
   {
@@ -2423,21 +2429,6 @@ std::optional<StreamFlags> ExternalStreamFlagFromToken(std::string_view token)
 
   return it->second;
 }
-
-/*!
- * \brief The language a filename token states.
- * \param[in] token One token of the filename.
- * \return The language, or nullopt where the token states none.
- */
-std::optional<KODI::LANGUAGE::CLanguageTag> ExternalStreamLanguageFromToken(
-    const std::string& token)
-{
-  // _ stands in for the BCP 47 subtag separator, since - separates the filename's own tokens
-  std::string langCode{token};
-  std::ranges::replace(langCode, '_', '-');
-
-  return KODI::LANGUAGE::CLanguageTag::TryParse(langCode);
-}
 } // namespace
 
 ExternalStreamInfo CUtil::GetExternalStreamDetailsFromFilename(
@@ -2487,6 +2478,7 @@ ExternalStreamInfo CUtil::GetExternalStreamDetailsFromFilename(
 
     // The tokens are read from the end of the filename towards the front, so of several languages
     // the one nearest the extension is the stream's and the rest belong to its name
+    bool languageFound{false};
     for (auto it = tokens.rbegin(); it != tokens.rend(); ++it)
     {
       if (const auto flag = ExternalStreamFlagFromToken(*it); flag.has_value())
@@ -2495,11 +2487,12 @@ ExternalStreamInfo CUtil::GetExternalStreamDetailsFromFilename(
         continue;
       }
 
-      if (info.language.IsEmpty())
+      if (!languageFound)
       {
-        if (const auto tag = ExternalStreamLanguageFromToken(*it); tag.has_value())
+        if (const auto tag = KODI::LANGUAGE::CLanguageTag::TryParse(*it); tag.has_value())
         {
           info.language = *tag;
+          languageFound = true;
           continue;
         }
       }
@@ -2514,8 +2507,8 @@ ExternalStreamInfo CUtil::GetExternalStreamDetailsFromFilename(
   if (info.flag == 0)
     info.flag = StreamFlags::FLAG_NONE;
 
-  CLog::Log(LOGDEBUG, "{} - Language = '{}' / Name = '{}' / Flag = '{}' from {}", __FUNCTION__,
-            info.language.AsBcp47(), info.name, info.flag, CURL::GetRedacted(associatedFile));
+  CLog::LogF(LOGDEBUG, "Language = '{}' / Name = '{}' / Flag = '{}' from {}",
+             info.language.ToString(), info.name, info.flag, CURL::GetRedacted(associatedFile));
 
   return info;
 }

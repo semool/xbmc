@@ -24,6 +24,8 @@
 #include "utils/log.h"
 #include "windowing/GraphicContext.h"
 
+#include <optional>
+
 using namespace Microsoft::WRL;
 
 namespace
@@ -49,6 +51,9 @@ bool IsHdrStream(const VideoPicture& picture, bool canRenderDolbyVision)
          (picture.color_transfer == AVCOL_TRC_SMPTE2084 ||
           picture.color_transfer == AVCOL_TRC_ARIB_STD_B67);
 }
+
+// Windows HDR state before playback, kept while renderers are replaced during the playback
+std::optional<bool> hdrStateBeforePlayback;
 } // namespace
 
 void CRenderBuffer::AppendPicture(const VideoPicture& picture)
@@ -162,11 +167,23 @@ void CRenderBuffer::QueueCopyFromGPU()
   }
 }
 
-
 CRendererBase::CRendererBase(CVideoSettings& videoSettings)
-  : m_videoSettings(videoSettings)
+  : m_colorManager(std::make_shared<CColorManager>()),
+    m_lut([colorManager = m_colorManager](AVColorPrimaries primaries)
+          { return LoadLut(*colorManager, primaries); },
+          [this](const CLutLoader::Lut& lut)
+          {
+            if (lut.cmsToken)
+              m_cmsToken = *lut.cmsToken;
+            m_lutSize = lut.size;
+            m_pLUTView = lut.view;
+            // a picture already rendered with the old LUT cannot be reused
+            m_intermediateState = {};
+            if (m_outputShader)
+              m_outputShader->SetLUT(m_lutSize, m_pLUTView.Get());
+          }),
+    m_videoSettings(videoSettings)
 {
-  m_colorManager.reset(new CColorManager());
 }
 
 CRendererBase::~CRendererBase()
@@ -180,11 +197,8 @@ CRendererBase::~CRendererBase()
   // Is not need set swap chain color space because toggling HDR re-creates swap chain
   if (m_AutoSwitchHDR)
   {
-    if (m_initialHdrEnabled != DX::Windowing()->IsHDROutput())
-    {
-      CLog::LogF(LOGDEBUG, "Restoring {} rendering", m_initialHdrEnabled ? "HDR" : "SDR");
-      DX::Windowing()->ToggleHDR();
-    }
+    if (!m_keepHdrState)
+      RestoreHdrStateBeforePlayback();
   }
   else // swap chain is not re-created, set proper color space
   {
@@ -200,19 +214,22 @@ CRendererBase::~CRendererBase()
 CRenderInfo CRendererBase::GetRenderInfo()
 {
   CRenderInfo info;
-  info.formats =
-  {
-    AV_PIX_FMT_D3D11VA_VLD,
-    AV_PIX_FMT_NV12,
-    AV_PIX_FMT_P010,
-    AV_PIX_FMT_P016,
-    AV_PIX_FMT_YUV420P,
-    AV_PIX_FMT_YUV420P10,
-    AV_PIX_FMT_YUV420P16
-  };
   info.max_buffer_size = NUM_BUFFERS;
 
   return info;
+}
+
+void CRendererBase::RestoreHdrStateBeforePlayback()
+{
+  if (!hdrStateBeforePlayback)
+    return;
+
+  if (*hdrStateBeforePlayback != DX::Windowing()->IsHDROutput())
+  {
+    CLog::LogF(LOGDEBUG, "Restoring {} rendering", *hdrStateBeforePlayback ? "HDR" : "SDR");
+    DX::Windowing()->ToggleHDR();
+  }
+  hdrStateBeforePlayback.reset();
 }
 
 bool CRendererBase::Configure(const VideoPicture& picture, float fps, unsigned orientation)
@@ -240,13 +257,21 @@ bool CRendererBase::Configure(const VideoPicture& picture, float fps, unsigned o
   // Auto switch HDR only if supported and "Settings/Player/Use HDR display capabilities" = ON
   if (m_AutoSwitchHDR)
   {
-    m_initialHdrEnabled = DX::Windowing()->IsHDROutput();
-    CLog::LogF(LOGDEBUG, "Storing Windows HDR state: {}", m_initialHdrEnabled ? "ON" : "OFF");
+    if (!hdrStateBeforePlayback)
+    {
+      hdrStateBeforePlayback = DX::Windowing()->IsHDROutput();
+      CLog::LogF(LOGDEBUG, "Storing Windows HDR state: {}", *hdrStateBeforePlayback ? "ON" : "OFF");
+    }
 
     const bool streamIsHDR = IsHdrStream(picture, m_canRenderDolbyVision);
 
     if (streamIsHDR != DX::Windowing()->IsHDROutput())
       DX::Windowing()->ToggleHDR();
+  }
+  else
+  {
+    // the setting was turned off during a playback in which a replaced renderer switched HDR
+    RestoreHdrStateBeforePlayback();
   }
 
   return true;
@@ -317,8 +342,7 @@ void CRendererBase::Render(CD3DTexture& target, const CRect& sourceRect, const C
                                 m_videoSettings.m_Saturation,
                                 m_videoSettings.m_Gamma,
                                 DX::Windowing()->UseLimitedColor(),
-                                m_videoSettings.m_ToneMapParam,
-                                m_lutIsLoading};
+                                m_videoSettings.m_ToneMapParam};
   m_reuseIntermediate = !uploaded && state == m_intermediateState;
   // RenderImpl() clears it if the conversion fails
   m_intermediateState = state;
@@ -446,40 +470,28 @@ bool CRendererBase::CreateIntermediateTarget(unsigned width,
   return true;
 }
 
-void CRendererBase::OnCMSConfigChanged(AVColorPrimaries srcPrimaries)
+CLutLoader::Lut CRendererBase::LoadLut(CColorManager& colorManager, AVColorPrimaries primaries)
 {
-  m_lutSize = 0;
-  m_lutIsLoading = true;
+  CLutLoader::Lut lut;
 
-  auto loadLutTask = Concurrency::create_task([this, srcPrimaries] {
-    // load 3DLUT data
-    int lutSize, dataSize;
-    if (!CColorManager::Get3dLutSize(CMS_DATA_FMT_RGBA, &lutSize, &dataSize))
-      return 0;
+  // load 3DLUT data
+  int lutSize, dataSize;
+  if (!CColorManager::Get3dLutSize(CMS_DATA_FMT_RGBA, &lutSize, &dataSize))
+    return lut;
 
-    const auto lutData = static_cast<uint16_t*>(KODI::MEMORY::AlignedMalloc(dataSize, 16));
-    bool success = m_colorManager->GetVideo3dLut(srcPrimaries, &m_cmsToken, CMS_DATA_FMT_RGBA,
-                                                 lutSize, lutData);
-    if (success)
-    {
-      success = COutputShader::CreateLUTView(lutSize, lutData, false, m_pLUTView.ReleaseAndGetAddressOf());
-    }
-    else
-      CLog::Log(LOGERROR, "CRendererBase::OnCMSConfigChanged: unable to loading the 3dlut data.");
+  const auto lutData = static_cast<uint16_t*>(KODI::MEMORY::AlignedMalloc(dataSize, 16));
+  int cmsToken;
+  if (colorManager.GetVideo3dLut(primaries, &cmsToken, CMS_DATA_FMT_RGBA, lutSize, lutData))
+  {
+    lut.cmsToken = cmsToken;
+    if (COutputShader::CreateLUTView(lutSize, lutData, false, lut.view.GetAddressOf()))
+      lut.size = lutSize;
+  }
+  else
+    CLog::LogF(LOGERROR, "unable to load the 3dlut data.");
 
-    KODI::MEMORY::AlignedFree(lutData);
-    if (!success)
-      return 0;
-
-    return lutSize;
-  });
-
-  loadLutTask.then([&](const int lutSize) {
-    m_lutSize = lutSize;
-    if (m_outputShader)
-      m_outputShader->SetLUT(m_lutSize, m_pLUTView.Get());
-    m_lutIsLoading = false;
-  });
+  KODI::MEMORY::AlignedFree(lutData);
+  return lut;
 }
 
 // this is copy from CBaseRenderer::ReorderDrawPoints()
@@ -567,8 +579,12 @@ void CRendererBase::CheckVideoParameters()
     OnOutputReset();
   }
 
-  if (m_cmsOn && !m_lutIsLoading && !m_colorManager->CheckConfiguration(m_cmsToken, buf->primaries))
-    OnCMSConfigChanged(buf->primaries);
+  m_lut.ApplyFinishedLoad();
+
+  // a load in flight has the colour manager to itself
+  if (m_cmsOn && !m_lut.IsLoading() &&
+      !m_colorManager->CheckConfiguration(m_cmsToken, buf->primaries))
+    m_lut.Load(buf->primaries);
 }
 
 DXGI_FORMAT CRendererBase::GetDXGIFormat(const VideoPicture& picture)

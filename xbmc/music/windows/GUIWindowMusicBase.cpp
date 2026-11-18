@@ -24,6 +24,7 @@
 #include "application/Application.h"
 #include "application/ApplicationComponents.h"
 #include "application/ApplicationPlayer.h"
+#include "filesystem/AddonsDirectory.h"
 #include "music/MusicFileItemClassify.h"
 #include "network/NetworkFileItemClassify.h"
 #include "playlists/PlayListFileItemClassify.h"
@@ -197,8 +198,8 @@ bool CGUIWindowMusicBase::OnMessage(CGUIMessage& message)
       }
       else if (iControl == CONTROL_BTNPLAYLISTS)
       {
-        if (!m_vecItems->IsPath("special://musicplaylists/"))
-          Update("special://musicplaylists/");
+        if (!m_vecItems->IsPath(CUtil::PlaylistsPathOf(MediaSection::MUSIC)))
+          Update(CUtil::PlaylistsPathOf(MediaSection::MUSIC));
       }
       else if (iControl == CONTROL_BTNSCAN)
       {
@@ -226,7 +227,7 @@ bool CGUIWindowMusicBase::OnMessage(CGUIMessage& message)
         {
           // is delete allowed?
           // must be at the playlists directory
-          if (m_vecItems->IsPath("special://musicplaylists/"))
+          if (m_vecItems->IsPath(CUtil::PlaylistsPathOf(MediaSection::MUSIC)))
             OnDeleteItem(iItem);
 
           else
@@ -864,7 +865,7 @@ bool CGUIWindowMusicBase::GetDirectory(const std::string &strDirectory, CFileIte
     int iWindow = GetID();
     // Add "New Playlist" items when in the playlists folder, except on playlist editor screen
     if ((iWindow != WINDOW_MUSIC_PLAYLIST_EDITOR) &&
-        (items.GetPath() == "special://musicplaylists/") &&
+        (items.GetPath() == CUtil::PlaylistsPathOf(MediaSection::MUSIC)) &&
         !items.Contains(ITEM::PLACEHOLDER::NEW_PLAYLIST))
     {
       const std::shared_ptr<CProfileManager> profileManager = CServiceBroker::GetSettingsComponent()->GetProfileManager();
@@ -1007,9 +1008,9 @@ std::string CGUIWindowMusicBase::GetStartFolder(const std::string &dir)
 {
   std::string lower(dir); StringUtils::ToLower(lower);
   if (lower == "plugins" || lower == "addons")
-    return "addons://sources/audio/";
+    return XFILE::CAddonsDirectory::SourcesPathOf(MEDIA::MediaSection::MUSIC);
   else if (lower == "$playlists" || lower == "playlists")
-    return "special://musicplaylists/";
+    return CUtil::PlaylistsPathOf(MediaSection::MUSIC);
   return CGUIMediaWindow::GetStartFolder(dir);
 }
 
