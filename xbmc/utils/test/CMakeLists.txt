@@ -35,9 +35,7 @@ set(SOURCES TestAlarmClock.cpp
             TestJSONVariantParser.cpp
             TestJSONVariantWriter.cpp
             TestLabelFormatter.cpp
-            TestLangCodeExpander.cpp
             TestLegacyPathTranslation.cpp
-            TestLocale.cpp
             Testlog.cpp
             TestMap.cpp
             TestMathUtils.cpp
@@ -59,9 +57,12 @@ set(SOURCES TestAlarmClock.cpp
             TestSystemInfo.cpp
             TestURI.cpp
             TestURIParser.cpp
-            TestURIUtils.cpp
+            TestURIUtilsArchives.cpp
+            TestURIUtilsClassification.cpp
+            TestURIUtilsDiscPaths.cpp
+            TestURIUtilsEncoding.cpp
+            TestURIUtilsPaths.cpp
             TestUrlOptions.cpp
-            TestUrlParsing.cpp
             TestVariant.cpp
             TestXBMCTinyXML.cpp
             TestXBMCTinyXML2.cpp

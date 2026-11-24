@@ -27,6 +27,7 @@
 #include "guilib/TextureManager.h"
 #include "input/WindowTranslator.h"
 #include "language/LangInfo.h"
+#include "language/Language.h"
 #include "language/LanguageTag.h"
 #include "messaging/ApplicationMessenger.h"
 #include "network/Network.h"
@@ -44,7 +45,6 @@
 #include "utils/ExecString.h"
 #include "utils/FileExtensionProvider.h"
 #include "utils/FileUtils.h"
-#include "utils/LangCodeExpander.h"
 #include "utils/MemUtils.h"
 #include "utils/StringUtils.h"
 #include "utils/SystemInfo.h"
@@ -189,17 +189,20 @@ namespace XBMCAddon
       return CServiceBroker::GetSettingsComponent()->GetSettings()->GetString(CSettings::SETTING_LOOKANDFEEL_SKIN);
     }
 
-    String getLanguage(int format /* = CLangCodeExpander::ENGLISH_NAME */, bool region /*= false*/)
+    String getLanguage(int format /* = KODI::LANGUAGE::CLanguageTag::ENGLISH_NAME */,
+                       bool region /*= false*/)
     {
       XBMC_TRACE;
       switch (format)
       {
-        case CLangCodeExpander::ENGLISH_NAME:
-        case CLangCodeExpander::ISO_NAME:
-        case CLangCodeExpander::ISO_639_1:
-        case CLangCodeExpander::ISO_639_2:
-          return g_langInfo.GetLanguageAs(static_cast<CLangCodeExpander::LANGFORMATS>(format),
-                                          region);
+        case KODI::LANGUAGE::CLanguageTag::ENGLISH_NAME:
+        case KODI::LANGUAGE::CLanguageTag::ISO_NAME:
+        case KODI::LANGUAGE::CLanguageTag::ISO_639_1:
+        case KODI::LANGUAGE::CLanguageTag::ISO_639_2:
+          return KODI::LANGUAGE::DescribeLanguage(
+              static_cast<KODI::LANGUAGE::CLanguageTag::Notation>(format),
+              KODI::LANGUAGE::CLanguage::GetInstance(),
+              CServiceBroker::GetResourcesComponent().GetLangInfo(), region);
         default:
           return "";
       }
@@ -405,44 +408,45 @@ namespace XBMCAddon
 
     String getRegion(const char* id)
     {
+      const auto& langInfo{CServiceBroker::GetResourcesComponent().GetLangInfo()};
       XBMC_TRACE;
       std::string result;
       CDateTime now = CDateTime::GetCurrentDateTime();
 
       if (StringUtils::CompareNoCase(id, "datelong") == 0)
       {
-        result = now.GetAsLocalizedDate(g_langInfo.GetDateFormat(true),
+        result = now.GetAsLocalizedDate(langInfo.GetDateFormat(true),
                                         CDateTime::ReturnFormat::CHOICE_YES);
       }
       else if (StringUtils::CompareNoCase(id, "dateshort") == 0)
       {
-        result = now.GetAsLocalizedDate(g_langInfo.GetDateFormat(false),
+        result = now.GetAsLocalizedDate(langInfo.GetDateFormat(false),
                                         CDateTime::ReturnFormat::CHOICE_YES);
       }
       else if (StringUtils::CompareNoCase(id, "tempunit") == 0)
       {
-        result = g_langInfo.GetTemperatureUnitString();
+        result = langInfo.GetTemperatureUnitString();
       }
       //TODO - There is a (low) risk that these 'raw' formats could be changed on Windows if they contain a '%-' sequence.
       else if (StringUtils::CompareNoCase(id, "datelongraw") == 0)
       {
-        result = g_langInfo.GetDateFormat(true);
+        result = langInfo.GetDateFormat(true);
       }
       else if (StringUtils::CompareNoCase(id, "dateshortraw") == 0)
       {
-        result = g_langInfo.GetDateFormat(false);
+        result = langInfo.GetDateFormat(false);
       }
       else if (StringUtils::CompareNoCase(id, "timeraw") == 0)
       {
-        result = g_langInfo.GetTimeFormat();
+        result = langInfo.GetTimeFormat();
       }
       else if (StringUtils::CompareNoCase(id, "speedunit") == 0)
       {
-        result = g_langInfo.GetSpeedUnitString();
+        result = langInfo.GetSpeedUnitString();
       }
       else if (StringUtils::CompareNoCase(id, "time") == 0)
       {
-        result = g_langInfo.GetTimeFormat();
+        result = langInfo.GetTimeFormat();
         if (StringUtils::StartsWith(result, "HH"))
         {
           StringUtils::Replace(result, "HH", "%H");
@@ -461,8 +465,9 @@ namespace XBMCAddon
       }
       else if (StringUtils::CompareNoCase(id, "meridiem") == 0)
       {
-        result = StringUtils::Format("{}/{}", g_langInfo.GetMeridiemSymbol(MeridiemSymbol::AM),
-                                     g_langInfo.GetMeridiemSymbol(MeridiemSymbol::PM));
+        result = StringUtils::Format(
+            "{}/{}", langInfo.GetMeridiemSymbol(KODI::LANGUAGE::MeridiemSymbol::AM),
+            langInfo.GetMeridiemSymbol(KODI::LANGUAGE::MeridiemSymbol::PM));
       }
 #ifdef TARGET_WINDOWS
       StringUtils::Replace(result, "%-", "%#"); //Convert to Windows format if required.
@@ -520,36 +525,20 @@ namespace XBMCAddon
 
     String convertLanguage(const char* language, int format)
     {
-      std::string convertedLanguage;
+      const auto tag = KODI::LANGUAGE::CLanguageTag::TryParse(language);
+      if (!tag.has_value())
+        return "";
+
       switch (format)
       {
-      case CLangCodeExpander::ENGLISH_NAME:
-        {
-          CLangCodeExpander::Lookup(language, convertedLanguage);
-          // maybe it's a check whether the language exists or not
-          if (convertedLanguage.empty())
-          {
-            CLangCodeExpander::ConvertToISO6392B(language, convertedLanguage);
-            CLangCodeExpander::Lookup(convertedLanguage, convertedLanguage);
-          }
-          break;
-        }
-      case CLangCodeExpander::ISO_639_1:
-        if (const auto tag = KODI::LANGUAGE::CLanguageTag::TryParse(language); tag.has_value())
-          convertedLanguage = tag->AsIso6391();
-        break;
-      case CLangCodeExpander::ISO_639_2:
-        if (const auto tag = KODI::LANGUAGE::CLanguageTag::TryParse(language); tag.has_value())
-          convertedLanguage = tag->AsIso6392B();
-        break;
-      case CLangCodeExpander::ISO_NAME:
-        if (const auto tag = KODI::LANGUAGE::CLanguageTag::TryParse(language); tag.has_value())
-          convertedLanguage = tag->ToEnglishLanguageName();
-        break;
-      default:
-        return "";
+        case KODI::LANGUAGE::CLanguageTag::ENGLISH_NAME:
+        case KODI::LANGUAGE::CLanguageTag::ISO_NAME:
+        case KODI::LANGUAGE::CLanguageTag::ISO_639_1:
+        case KODI::LANGUAGE::CLanguageTag::ISO_639_2:
+          return tag->In(static_cast<KODI::LANGUAGE::CLanguageTag::Notation>(format));
+        default:
+          return "";
       }
-      return convertedLanguage;
     }
 
     String getUserAgent()
@@ -618,12 +607,21 @@ namespace XBMCAddon
     int getLOGNONE() { return LOGNONE; }
 
     // language string formats
-    int getISO_639_1() { return CLangCodeExpander::ISO_639_1; }
-    int getISO_639_2(){ return CLangCodeExpander::ISO_639_2; }
-    int getENGLISH_NAME() { return CLangCodeExpander::ENGLISH_NAME; }
+    int getISO_639_1()
+    {
+      return KODI::LANGUAGE::CLanguageTag::ISO_639_1;
+    }
+    int getISO_639_2()
+    {
+      return KODI::LANGUAGE::CLanguageTag::ISO_639_2;
+    }
+    int getENGLISH_NAME()
+    {
+      return KODI::LANGUAGE::CLanguageTag::ENGLISH_NAME;
+    }
     int getISO_NAME()
     {
-      return CLangCodeExpander::ISO_NAME;
+      return KODI::LANGUAGE::CLanguageTag::ISO_NAME;
     }
 
     // Device power status (HDMI-CEC)
